@@ -1,0 +1,12 @@
+= Geronimo Microprofile Metrics Implementation
+
+== Artifact
+
+[source,xml]
+----
+<parent>
+  <groupId>org.apache.geronimo</groupId>
+  <artifactId>geronimo-metrics</artifactId>
+  <version>${metrics.version}</version>
+</parent>
+----
