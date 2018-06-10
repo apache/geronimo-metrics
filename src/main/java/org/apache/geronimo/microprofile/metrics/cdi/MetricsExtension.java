@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -38,6 +40,7 @@ import javax.enterprise.inject.spi.WithAnnotations;
 import javax.enterprise.util.AnnotationLiteral;
 import javax.enterprise.util.Nonbinding;
 
+import org.apache.geronimo.microprofile.metrics.impl.GaugeImpl;
 import org.apache.geronimo.microprofile.metrics.impl.RegistryImpl;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
@@ -58,17 +61,17 @@ public class MetricsExtension implements Extension {
     private final MetricRegistry vendorRegistry = new RegistryImpl();
 
     private final Map<String, Metadata> registrations = new HashMap<>();
-    private final Map<String, Function<BeanManager, Gauge<?>>> gauges = new HashMap<>();
+    private final Map<String, Function<BeanManager, Gauge<?>>> gaugeFactories = new HashMap<>();
     private final Collection<CreationalContext<?>> creationalContexts = new ArrayList<>();
 
-    void letOtherExtensionUseRegistries(@Observes final BeforeBeanDiscovery beforeBeanDiscovery, final BeanManager beanManager) {
+    void letOtherExtensionsUseRegistries(@Observes final BeforeBeanDiscovery beforeBeanDiscovery, final BeanManager beanManager) {
         beforeBeanDiscovery.addQualifier(RegistryType.class);
         beanManager.fireEvent(applicationRegistry);
         beanManager.fireEvent(applicationRegistry, new RegistryTypeImpl(MetricRegistry.Type.APPLICATION));
         beanManager.fireEvent(baseRegistry, new RegistryTypeImpl(MetricRegistry.Type.BASE));
         beanManager.fireEvent(vendorRegistry, new RegistryTypeImpl(MetricRegistry.Type.VENDOR));
 
-        // we make @Metric(name) binding
+        // we make @Metric.name binding (to avoid to write producers relying on injection point)
         beforeBeanDiscovery.configureQualifier(org.eclipse.microprofile.metrics.annotation.Metric.class)
                 .methods().stream().filter(method -> method.getAnnotated().getJavaMember().getName().equals("name"))
                 .forEach(method -> method.remove(a -> a.annotationType() == Nonbinding.class));
@@ -181,19 +184,12 @@ public class MetricsExtension implements Extension {
                     final Metadata metadata = new Metadata(name, gauge.displayName(), gauge.description(), MetricType.GAUGE, gauge.unit());
                     Stream.of(gauge.tags()).forEach(metadata::addTag);
                     addRegistration(method, name, metadata, false, gauge.tags());
-                    gauges.put(name, beanManager -> {
+                    gaugeFactories.put(name, beanManager -> {
                         final CreationalContext<Object> creationalContext = beanManager.createCreationalContext(null);
                         final Bean<?> bean = beanManager.resolve(beanManager.getBeans(javaClass, Default.Literal.INSTANCE));
                         final Object reference = beanManager.getReference(bean, javaClass, creationalContext);
-                        final Gauge<?> instance = () -> {
-                            try {
-                                return Method.class.cast(javaMember).invoke(reference);
-                            } catch (final IllegalAccessException e) {
-                                throw new IllegalStateException(e);
-                            } catch (final InvocationTargetException e) {
-                                throw new IllegalStateException(e.getCause());
-                            }
-                        };
+                        final Method mtd = Method.class.cast(javaMember);
+                        final Gauge<?> instance = new GaugeImpl<>(reference, mtd);
                         if (!beanManager.isNormalScope(bean.getScope())) {
                             creationalContexts.add(creationalContext);
                         }
@@ -203,7 +199,7 @@ public class MetricsExtension implements Extension {
             });
     }
 
-    void afterBeanDiscovery(@Observes final AfterBeanDiscovery afterBeanDiscovery) {
+    void afterBeanDiscovery(@Observes final AfterBeanDiscovery afterBeanDiscovery, final BeanManager beanManager) {
         addBean(afterBeanDiscovery, MetricRegistry.Type.APPLICATION.name() + "_@Default", MetricRegistry.class, Default.Literal.INSTANCE, applicationRegistry);
         addBean(afterBeanDiscovery, MetricRegistry.Type.APPLICATION.name(), MetricRegistry.class, new RegistryTypeImpl(MetricRegistry.Type.APPLICATION), applicationRegistry);
         addBean(afterBeanDiscovery, MetricRegistry.Type.BASE.name(), MetricRegistry.class, new RegistryTypeImpl(MetricRegistry.Type.BASE), baseRegistry);
@@ -212,6 +208,20 @@ public class MetricsExtension implements Extension {
         // metrics
         registrations.forEach((name, registration) -> {
             switch (registration.getTypeRaw()) {
+                case GAUGE:
+                    addBean(afterBeanDiscovery, name, Gauge.class, new MetricImpl(registration), new Gauge<Object>() {
+                        private final AtomicReference<Gauge<?>> ref = new AtomicReference<>();
+                        @Override
+                        public Object getValue() {
+                            Gauge<?> gauge = ref.get();
+                            if (gauge == null) { // getGauges() is expensive in current form, avoid it
+                                gauge = applicationRegistry.getGauges().get(name);
+                                ref.compareAndSet(null, gauge);
+                            }
+                            return gauge.getValue();
+                        }
+                    });
+                    break;
                 case TIMER:
                     addBean(afterBeanDiscovery, name, Timer.class, new MetricImpl(registration), applicationRegistry.timer(registration));
                     break;
@@ -232,9 +242,12 @@ public class MetricsExtension implements Extension {
     void afterDeploymentValidation(@Observes final AfterDeploymentValidation afterDeploymentValidation,
                                    final BeanManager beanManager) {
         registrations.values().stream().filter(m -> m.getTypeRaw() == MetricType.GAUGE)
-                .forEach(registration -> applicationRegistry.register(registration, gauges.get(registration.getName()).apply(beanManager)));
+                .forEach(registration -> {
+                    final Gauge<?> gauge = gaugeFactories.get(registration.getName()).apply(beanManager);
+                    applicationRegistry.register(registration, gauge);
+                });
 
-        gauges.clear();
+        gaugeFactories.clear();
         registrations.clear();
     }
 

@@ -2,18 +2,17 @@ package org.apache.geronimo.microprofile.metrics.test;
 
 import java.lang.reflect.Field;
 
-import javax.enterprise.context.spi.CreationalContext;
-import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
-import javax.enterprise.inject.spi.InjectionTarget;
 
 import org.apache.catalina.Context;
 import org.apache.meecrowave.Meecrowave;
 import org.apache.meecrowave.arquillian.MeecrowaveContainer;
 import org.jboss.arquillian.container.spi.client.container.DeployableContainer;
+import org.jboss.arquillian.container.spi.context.annotation.ContainerScoped;
 import org.jboss.arquillian.container.spi.context.annotation.DeploymentScoped;
 import org.jboss.arquillian.container.spi.event.container.AfterDeploy;
+import org.jboss.arquillian.container.spi.event.container.AfterStart;
 import org.jboss.arquillian.container.spi.event.container.BeforeUnDeploy;
 import org.jboss.arquillian.container.test.impl.client.protocol.local.LocalProtocol;
 import org.jboss.arquillian.container.test.spi.client.deployment.ApplicationArchiveProcessor;
@@ -49,43 +48,38 @@ public class ArquillianSetup implements LoadableExtension {
         private InstanceProducer<ClassLoader> appClassLoaderInstanceProducer;
 
         @Inject
-        @DeploymentScoped
-        private InstanceProducer<ClassLoader> testClassLoaderInstanceProducer;
+        @ContainerScoped
+        private InstanceProducer<Meecrowave> container;
+
+        public void onDeploy(@Observes final AfterStart afterStart) throws Exception {
+            final DeployableContainer<?> deployableContainer = afterStart.getDeployableContainer();
+            final Field container = MeecrowaveContainer.class.getDeclaredField("container");
+            container.setAccessible(true);
+            final Meecrowave meecrowave = Meecrowave.class.cast(container.get(deployableContainer));
+            this.container.set(meecrowave);
+        }
 
         public void onDeploy(@Observes final AfterDeploy afterDeploy) {
-            final DeployableContainer<?> deployableContainer = afterDeploy.getDeployableContainer();
-            try {
-                final Field container = MeecrowaveContainer.class.getDeclaredField("container");
-                container.setAccessible(true);
-                final Meecrowave meecrowave = Meecrowave.class.cast(container.get(deployableContainer));
-                final ClassLoader appLoader = Context.class.cast(meecrowave.getTomcat().getHost().findChildren()[0]).getLoader().getClassLoader();
-                final Thread thread = Thread.currentThread();
-                appClassLoaderInstanceProducer.set(appLoader);
-                testClassLoaderInstanceProducer.set(meecrowave.getTomcat().getServer().getParentClassLoader());
-                thread.setContextClassLoader(appLoader);
-                beanManagerInstanceProducer.set(CDI.current().getBeanManager());
-            } catch (final Exception e) {
-                // no-op, will not happen and if so it is another container
-            }
+            final Meecrowave meecrowave = container.get();
+            final ClassLoader appLoader = Context.class.cast(meecrowave.getTomcat().getHost().findChildren()[0]).getLoader().getClassLoader();
+            appClassLoaderInstanceProducer.set(appLoader);
+
+            final Thread thread = Thread.currentThread();
+            thread.setContextClassLoader(appLoader);
+            beanManagerInstanceProducer.set(CDI.current().getBeanManager());
         }
 
         public void onUndeploy(@Observes final BeforeUnDeploy beforeUnDeploy) {
-            final ClassLoader cl = testClassLoaderInstanceProducer.get();
+            final ClassLoader cl = container.get().getTomcat().getServer().getParentClassLoader();
             Thread.currentThread().setContextClassLoader(cl);
         }
 
-        public void enrich(@Observes final Before before) {
+        public void enrich(@Observes final Before before) throws Exception {
             final Thread thread = Thread.currentThread();
             final ClassLoader classLoader = thread.getContextClassLoader();
             thread.setContextClassLoader(appClassLoaderInstanceProducer.get());
             try {
-                final BeanManager beanManager = beanManagerInstanceProducer.get();
-                final Object testInstance = before.getTestInstance();
-                final AnnotatedType<?> annotatedType = beanManager.createAnnotatedType(before.getTestClass().getJavaClass());
-                final InjectionTarget injectionTarget = beanManager.createInjectionTarget(annotatedType);
-                final CreationalContext<?> creationalContext = beanManager.createCreationalContext(null);
-                injectionTarget.inject(testInstance, creationalContext);
-                creationalContext.release();
+                container.get().inject(before.getTestInstance()).close();
             } finally {
                 thread.setContextClassLoader(classLoader);
             }
