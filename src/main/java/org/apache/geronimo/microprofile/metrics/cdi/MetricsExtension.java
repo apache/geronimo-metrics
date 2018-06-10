@@ -42,6 +42,7 @@ import javax.enterprise.util.Nonbinding;
 
 import org.apache.geronimo.microprofile.metrics.impl.GaugeImpl;
 import org.apache.geronimo.microprofile.metrics.impl.RegistryImpl;
+import org.apache.geronimo.microprofile.metrics.jaxrs.MetricsEndpoints;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Histogram;
@@ -63,6 +64,12 @@ public class MetricsExtension implements Extension {
     private final Map<String, Metadata> registrations = new HashMap<>();
     private final Map<String, Function<BeanManager, Gauge<?>>> gaugeFactories = new HashMap<>();
     private final Collection<CreationalContext<?>> creationalContexts = new ArrayList<>();
+
+    void letOtherExtensionsUseRegistries(@Observes final ProcessAnnotatedType<MetricsEndpoints> processAnnotatedType) {
+        if (!Boolean.getBoolean("geronimo.metrics.jaxrs.activated")) {
+            processAnnotatedType.veto();
+        }
+    }
 
     void letOtherExtensionsUseRegistries(@Observes final BeforeBeanDiscovery beforeBeanDiscovery, final BeanManager beanManager) {
         beforeBeanDiscovery.addQualifier(RegistryType.class);

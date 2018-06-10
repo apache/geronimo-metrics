@@ -40,20 +40,6 @@ public class MeterImpl implements Meter {
         rate15.update(n);
     }
 
-    private void doRefresh() {
-        final long now = System.nanoTime();
-        final long lastUpdateNs = lastUpdate.get();
-        final long elaspsedTime = now - lastUpdateNs;
-        if (elaspsedTime > INTERVAL_NS && lastUpdate.compareAndSet(lastUpdateNs, now)) {
-            final long diff = elaspsedTime / INTERVAL_NS;
-            for (long it = 0; it < diff; it++) { // simulate time, avoids a background thread
-                rate1.refresh();
-                rate5.refresh();
-                rate15.refresh();
-            }
-        }
-    }
-
     @Override
     public long getCount() {
         return count.sum();
@@ -84,6 +70,20 @@ public class MeterImpl implements Meter {
             return 0;
         }
         return count / TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - initNs);
+    }
+
+    private void doRefresh() {
+        final long now = System.nanoTime();
+        final long lastUpdateNs = lastUpdate.get();
+        final long elaspsedTime = now - lastUpdateNs;
+        if (elaspsedTime > INTERVAL_NS && lastUpdate.compareAndSet(lastUpdateNs, now)) {
+            final long diff = elaspsedTime / INTERVAL_NS;
+            for (long it = 0; it < diff; it++) { // simulate time, avoids a background thread
+                rate1.refresh();
+                rate5.refresh();
+                rate15.refresh();
+            }
+        }
     }
 
     private static class Rate {

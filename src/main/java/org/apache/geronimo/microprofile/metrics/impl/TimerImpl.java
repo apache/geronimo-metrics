@@ -81,6 +81,46 @@ public class TimerImpl implements Timer {
         return histogram.getSnapshot();
     }
 
+    public double getP50() {
+        return getSnapshot().getMedian();
+    }
+
+    public double getP75() {
+        return getSnapshot().get75thPercentile();
+    }
+
+    public double getP95() {
+        return getSnapshot().get95thPercentile();
+    }
+
+    public double getP98() {
+        return getSnapshot().get98thPercentile();
+    }
+
+    public double getP99() {
+        return getSnapshot().get99thPercentile();
+    }
+
+    public double getP999() {
+        return getSnapshot().get999thPercentile();
+    }
+
+    public long getMax() {
+        return getSnapshot().getMax();
+    }
+
+    public double getMean() {
+        return getSnapshot().getMean();
+    }
+
+    public long getMin() {
+        return getSnapshot().getMin();
+    }
+
+    public double getStdDev() {
+        return getSnapshot().getStdDev();
+    }
+
     private class ContextImpl implements Context {
         private final long start = System.nanoTime();
 
