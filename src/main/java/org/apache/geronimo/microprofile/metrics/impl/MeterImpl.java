@@ -31,7 +31,7 @@ public class MeterImpl implements Meter {
         mark(1);
     }
 
-    @Override
+    @Override // this is not the most beautiful piece but locking here would be a perf killer
     public void mark(final long n) {
         doRefresh();
         count.add(n);

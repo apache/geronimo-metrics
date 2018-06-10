@@ -1,22 +1,28 @@
 package org.apache.geronimo.microprofile.metrics.impl;
 
-import static java.util.Arrays.copyOf;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Snapshot;
 
-// todo: rework it since this impl is not that great, an exponential decay impl is better
-// todo: drop values from time to time - previous comment is ok for that
+// todo? rework it to use the classical exponential decay impl?
 public class HistogramImpl implements Histogram {
-    private final Collection<Long> values = new ArrayList<>();
+    private static final long INTERVAL_NS = TimeUnit.MINUTES.toNanos(1);
+    private static final Value[] EMPTY_VALUES_ARRAY = new Value[0];
+
+    private final LongAdder count = new LongAdder();
+    private final Collection<Value> values = new CopyOnWriteArrayList<>();
+    private final AtomicLong lastCleanUp = new AtomicLong(System.nanoTime());
 
     @Override
     public void update(final int value) {
@@ -25,24 +31,38 @@ public class HistogramImpl implements Histogram {
 
     @Override
     public synchronized void update(final long value) {
-        values.add(value);
+        refresh();
+        count.increment();
+        values.add(new Value(System.nanoTime(), value));
     }
 
     @Override
     public long getCount() {
-        return values.size();
+        return count.sum();
     }
 
     @Override
     public Snapshot getSnapshot() {
-        return new SnapshotImpl(values.stream().mapToLong(i -> i).toArray());
+        refresh();
+        return new SnapshotImpl(values.toArray(EMPTY_VALUES_ARRAY));
+    }
+
+    // cheap way to avoid to explode the mem for nothing
+    private void refresh() {
+        final long now = System.nanoTime();
+        final long lastUpdateNs = lastCleanUp.get();
+        final long elaspsedTime = now - lastUpdateNs;
+        if (elaspsedTime > INTERVAL_NS && lastCleanUp.compareAndSet(lastUpdateNs, now)) {
+            final long cleanFrom = now - INTERVAL_NS;
+            values.removeIf(it -> it.timestamp > cleanFrom);
+        }
     }
 
     private static class SnapshotImpl extends Snapshot {
-        private final long[] values;
+        private final Value[] values;
         private volatile long[] sorted;
 
-        private SnapshotImpl(final long[] values) {
+        private SnapshotImpl(final Value[] values) {
             this.values = values;
         }
 
@@ -52,13 +72,12 @@ public class HistogramImpl implements Histogram {
                 return 0;
             }
             if (values.length == 1) {
-                return values[0];
+                return values[0].value;
             }
             if (sorted == null) {
                 synchronized (this) {
                     if (sorted == null) {
-                        sorted = new long[values.length];
-                        System.arraycopy(values, 0, sorted, 0, values.length);
+                        sorted = getValues();
                         Arrays.sort(sorted);
                     }
                 }
@@ -68,7 +87,7 @@ public class HistogramImpl implements Histogram {
 
         @Override
         public long[] getValues() {
-            return copyOf(values, values.length);
+            return longs().toArray();
         }
 
         @Override
@@ -78,17 +97,17 @@ public class HistogramImpl implements Histogram {
 
         @Override
         public long getMax() {
-            return LongStream.of(values).max().orElse(0);
+            return longs().max().orElse(0);
         }
 
         @Override
         public double getMean() {
-            return LongStream.of(values).sum() / (double) values.length;
+            return longs().sum() / (double) values.length;
         }
 
         @Override
         public long getMin() {
-            return LongStream.of(values).min().orElse(0);
+            return longs().min().orElse(0);
         }
 
         @Override
@@ -97,18 +116,32 @@ public class HistogramImpl implements Histogram {
                 return 0;
             }
             final double mean = getMean();
-            return Math.sqrt(LongStream.of(values).map(v -> (long) Math.pow(v - mean, 2)).sum() / values.length - 1);
+            return Math.sqrt(longs().map(v -> (long) Math.pow(v - mean, 2)).sum() / values.length - 1);
         }
 
         @Override
         public void dump(final OutputStream output) {
-            LongStream.of(values).forEach(v -> {
+            longs().forEach(v -> {
                 try {
                     output.write((v + "\n").getBytes(StandardCharsets.UTF_8));
                 } catch (final IOException e) {
                     throw new IllegalStateException(e);
                 }
             });
+        }
+
+        private LongStream longs() {
+            return Stream.of(values).mapToLong(i -> i.value);
+        }
+    }
+
+    private static final class Value {
+        private final long timestamp;
+        private final long value;
+
+        private Value(final long timestamp, final long value) {
+            this.timestamp = timestamp;
+            this.value = value;
         }
     }
 }
