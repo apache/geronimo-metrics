@@ -21,9 +21,9 @@ import org.jboss.shrinkwrap.api.exporter.ZipExporter;
 public class TckContainer extends MeecrowaveContainer {
     @Override
     public ProtocolMetaData deploy(final Archive<?> archive) {
-        final File dump = File.class.cast(invoke("toArchiveDump", archive));
+        final File dump = toArchiveDump(archive);
         archive.as(ZipExporter.class).exportTo(dump, true);
-        final String context = invoke("sanitizeName", archive).toString();
+        final String context = ""; // forced by tcks :(
         final Meecrowave container = getContainer();
         container.deployWebapp(new Meecrowave.DeploymentMeta(context, dump, c -> {
             c.setLoader(new WebappLoader() {
@@ -57,11 +57,11 @@ public class TckContainer extends MeecrowaveContainer {
         }
     }
 
-    private Object invoke(final String mtd, final Archive<?> argValue) {
+    private File toArchiveDump(final Archive<?> argValue) {
         try {
-            final Method method = getClass().getSuperclass().getDeclaredMethod(mtd, Archive.class);
+            final Method method = getClass().getSuperclass().getDeclaredMethod("toArchiveDump", Archive.class);
             method.setAccessible(true);
-            return method.invoke(this, argValue);
+            return File.class.cast(method.invoke(this, argValue));
         } catch (final Exception e) {
             throw new IllegalStateException(e);
         }

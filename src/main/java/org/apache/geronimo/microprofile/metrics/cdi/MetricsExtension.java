@@ -256,6 +256,8 @@ public class MetricsExtension implements Extension {
 
         gaugeFactories.clear();
         registrations.clear();
+
+        vendorRegistry.counter("geronimoCounter"); // for tck, to drop if we add real vendor metrics
     }
 
     void beforeShutdown(@Observes final BeforeShutdown beforeShutdown) {

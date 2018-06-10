@@ -69,7 +69,11 @@ public class MeterImpl implements Meter {
         if (count == 0) {
             return 0;
         }
-        return count / TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - initNs);
+        final long duration = System.nanoTime() - initNs;
+        if (duration == 0) {
+            return 0;
+        }
+        return count / TimeUnit.NANOSECONDS.toSeconds(duration);
     }
 
     private void doRefresh() {

@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
+import javax.json.bind.annotation.JsonbTransient;
+
 import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Snapshot;
 
@@ -42,6 +44,7 @@ public class HistogramImpl implements Histogram {
     }
 
     @Override
+    @JsonbTransient
     public Snapshot getSnapshot() {
         refresh();
         return new SnapshotImpl(values.toArray(EMPTY_VALUES_ARRAY));

@@ -3,6 +3,8 @@ package org.apache.geronimo.microprofile.metrics.impl;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
+import javax.json.bind.annotation.JsonbTransient;
+
 import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Meter;
 import org.eclipse.microprofile.metrics.Snapshot;
@@ -77,6 +79,7 @@ public class TimerImpl implements Timer {
     }
 
     @Override
+    @JsonbTransient
     public Snapshot getSnapshot() {
         return histogram.getSnapshot();
     }
