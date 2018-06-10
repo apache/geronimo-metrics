@@ -1,7 +1,6 @@
 package org.apache.geronimo.microprofile.metrics.jaxrs;
 
 import static java.util.Collections.singletonMap;
-import static java.util.Locale.ROOT;
 import static java.util.stream.Collectors.toMap;
 import static org.eclipse.microprofile.metrics.MetricRegistry.Type.BASE;
 import static org.eclipse.microprofile.metrics.MetricRegistry.Type.VENDOR;
@@ -20,7 +19,6 @@ import javax.ws.rs.core.MediaType;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.annotation.RegistryType;
 
-// TODO: ensure this is NOT deployed out of the box, this is a security hole!
 @Path("metrics")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
@@ -39,7 +37,7 @@ public class MetricsEndpoints {
     @GET
     public Object get() {
         return Stream.of(MetricRegistry.Type.values())
-                .collect(toMap(MetricRegistry.Type::getName, it -> findRegistry(it.getName())));
+                .collect(toMap(MetricRegistry.Type::getName, it -> findRegistry(it.getName()).getMetrics()));
     }
 
     @GET
