@@ -1,9 +1,25 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
+import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -13,7 +29,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -40,6 +55,7 @@ import javax.enterprise.inject.spi.WithAnnotations;
 import javax.enterprise.util.AnnotationLiteral;
 import javax.enterprise.util.Nonbinding;
 
+import org.apache.geronimo.microprofile.metrics.impl.BaseMetrics;
 import org.apache.geronimo.microprofile.metrics.impl.GaugeImpl;
 import org.apache.geronimo.microprofile.metrics.impl.RegistryImpl;
 import org.apache.geronimo.microprofile.metrics.jaxrs.MetricsEndpoints;
@@ -110,7 +126,8 @@ public class MetricsExtension implements Extension {
         }
 
         if (config != null) {
-            String name = Names.findName(injectionPoint.getMember().getDeclaringClass(), injectionPoint.getMember(), config.name(), config.absolute());
+            String name = Names.findName(injectionPoint.getMember().getDeclaringClass(), injectionPoint.getMember(),
+                    of(config.name()).filter(it -> !it.isEmpty()).orElseGet(injectionPoint.getMember()::getName), config.absolute());
             final Metadata metadata = new Metadata(name, config.displayName(), config.description(), type, config.unit());
             Stream.of(config.tags()).forEach(metadata::addTag);
             final Metadata existing = registrations.putIfAbsent(name, metadata);
@@ -257,7 +274,12 @@ public class MetricsExtension implements Extension {
         gaugeFactories.clear();
         registrations.clear();
 
-        vendorRegistry.counter("geronimoCounter"); // for tck, to drop if we add real vendor metrics
+        // mainly for tck, to drop if we add real vendor metrics
+        vendorRegistry.counter("startTime").inc(System.currentTimeMillis());
+
+        if (!Boolean.getBoolean("geronimo.metrics.base.skip")) {
+            new BaseMetrics(baseRegistry).register();
+        }
     }
 
     void beforeShutdown(@Observes final BeforeShutdown beforeShutdown) {

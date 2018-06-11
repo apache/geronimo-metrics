@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.geronimo.microprofile.metrics.impl;
 
 import java.io.IOException;
@@ -22,9 +38,14 @@ public class HistogramImpl implements Histogram {
     private static final long INTERVAL_NS = TimeUnit.MINUTES.toNanos(1);
     private static final Value[] EMPTY_VALUES_ARRAY = new Value[0];
 
+    private final String unit;
     private final LongAdder count = new LongAdder();
     private final Collection<Value> values = new CopyOnWriteArrayList<>();
     private final AtomicLong lastCleanUp = new AtomicLong(System.nanoTime());
+
+    public HistogramImpl(final String unit) {
+        this.unit = unit;
+    }
 
     @Override
     public void update(final int value) {
@@ -48,6 +69,10 @@ public class HistogramImpl implements Histogram {
     public Snapshot getSnapshot() {
         refresh();
         return new SnapshotImpl(values.toArray(EMPTY_VALUES_ARRAY));
+    }
+
+    public String getUnit() {
+        return unit;
     }
 
     public double getP50() {
@@ -86,7 +111,7 @@ public class HistogramImpl implements Histogram {
         return getSnapshot().getMin();
     }
 
-    public double getStdDev() {
+    public double getStddev() {
         return getSnapshot().getStdDev();
     }
 

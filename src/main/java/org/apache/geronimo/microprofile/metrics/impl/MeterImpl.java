@@ -1,8 +1,26 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.geronimo.microprofile.metrics.impl;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+
+import javax.json.bind.annotation.JsonbProperty;
 
 import org.eclipse.microprofile.metrics.Meter;
 
@@ -25,6 +43,15 @@ public class MeterImpl implements Meter {
     private final Rate rate1 = new Rate(ALPHA_MN, INTERVAL_NS);
     private final long initNs = System.nanoTime();
     private final AtomicLong lastUpdate = new AtomicLong(System.nanoTime());
+    private final String unit;
+
+    public MeterImpl(final String unit) {
+        this.unit = unit;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
 
     @Override
     public void mark() {
@@ -46,18 +73,21 @@ public class MeterImpl implements Meter {
     }
 
     @Override
+    @JsonbProperty("fifteenMinRate")
     public double getFifteenMinuteRate() {
         doRefresh();
         return rate15.value;
     }
 
     @Override
+    @JsonbProperty("fiveMinRate")
     public double getFiveMinuteRate() {
         doRefresh();
         return rate5.value;
     }
 
     @Override
+    @JsonbProperty("oneMinRate")
     public double getOneMinuteRate() {
         doRefresh();
         return rate1.value;
@@ -73,7 +103,11 @@ public class MeterImpl implements Meter {
         if (duration == 0) {
             return 0;
         }
-        return count / TimeUnit.NANOSECONDS.toSeconds(duration);
+        final long seconds = TimeUnit.NANOSECONDS.toSeconds(duration);
+        if (seconds == 0) {
+            return 0;
+        }
+        return count / seconds;
     }
 
     private void doRefresh() {
