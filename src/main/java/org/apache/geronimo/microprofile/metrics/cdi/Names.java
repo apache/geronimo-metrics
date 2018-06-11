@@ -27,17 +27,22 @@ final class Names {
     }
 
     static String findName(final Class<?> declaring, final Member executable,
-                           final String annotationName, final boolean absolute) {
+                           final String annotationName, final boolean absolute,
+                           final String prefix) {
         if (annotationName == null || annotationName.isEmpty()) {
             if (absolute) {
                 return executable.getName();
             }
-            return MetricRegistry.name(declaring,
+            return MetricRegistry.name(prefix(declaring, prefix),
                     // bug in the JVM?
                     Constructor.class.isInstance(executable) ? executable.getDeclaringClass().getSimpleName() : executable.getName());
         } else if (absolute) {
             return annotationName;
         }
-        return MetricRegistry.name(declaring, annotationName);
+        return MetricRegistry.name(prefix(declaring, prefix), annotationName);
+    }
+
+    private static String prefix(final Class<?> declaring, final String prefix) {
+        return prefix.isEmpty() ? declaring.getName() : declaring.getPackage().getName() + '.' + prefix;
     }
 }

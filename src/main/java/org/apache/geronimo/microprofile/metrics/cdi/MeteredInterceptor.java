@@ -16,6 +16,8 @@
  */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
+import static java.util.Optional.ofNullable;
+
 import java.io.Serializable;
 import java.lang.reflect.Executable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -84,7 +86,8 @@ public class MeteredInterceptor implements Serializable {
             final String name = Names.findName(
                     type.getJavaClass(),
                     executable, metered == null ? null : metered.name(),
-                    metered != null && metered.absolute());
+                    metered != null && metered.absolute(),
+                    ofNullable(type.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
 
             meter = Meter.class.cast(registry.getMetrics().get(name));
             if (meter == null) {

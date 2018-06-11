@@ -69,6 +69,7 @@ import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricType;
 import org.eclipse.microprofile.metrics.Timer;
 import org.eclipse.microprofile.metrics.annotation.Counted;
+import org.eclipse.microprofile.metrics.annotation.Metered;
 import org.eclipse.microprofile.metrics.annotation.RegistryType;
 import org.eclipse.microprofile.metrics.annotation.Timed;
 
@@ -127,7 +128,8 @@ public class MetricsExtension implements Extension {
 
         if (config != null) {
             String name = Names.findName(injectionPoint.getMember().getDeclaringClass(), injectionPoint.getMember(),
-                    of(config.name()).filter(it -> !it.isEmpty()).orElseGet(injectionPoint.getMember()::getName), config.absolute());
+                    of(config.name()).filter(it -> !it.isEmpty()).orElseGet(injectionPoint.getMember()::getName), config.absolute(),
+                    "");
             final Metadata metadata = new Metadata(name, config.displayName(), config.description(), type, config.unit());
             Stream.of(config.tags()).forEach(metadata::addTag);
             final Metadata existing = registrations.putIfAbsent(name, metadata);
@@ -178,33 +180,39 @@ public class MetricsExtension implements Extension {
                 final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() -> annotatedType.getAnnotation(Counted.class));
                 final Class<?> javaClass = annotatedType.getJavaClass();
                 if (counted != null) {
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, counted.name(), counted.absolute());
+                    final boolean isMethod = method.isAnnotationPresent(Counted.class);
+                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, counted.name(), counted.absolute(),
+                            ofNullable(annotatedType.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
                     final Metadata metadata = new Metadata(name, counted.displayName(), counted.description(), MetricType.COUNTER, counted.unit());
                     Stream.of(counted.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, counted.reusable(), counted.tags());
+                    addRegistration(method, name, metadata, counted.reusable() || !isMethod, counted.tags());
                 }
 
                 final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> annotatedType.getAnnotation(Timed.class));
                 if (timed != null) {
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, timed.name(), timed.absolute());
+                    final boolean isMethod = method.isAnnotationPresent(Timed.class);
+                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? timed.name() : "", timed.absolute(),
+                            ofNullable(annotatedType.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
                     final Metadata metadata = new Metadata(name, timed.displayName(), timed.description(), MetricType.TIMER, timed.unit());
                     Stream.of(timed.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, timed.reusable(), timed.tags());
+                    addRegistration(method, name, metadata, timed.reusable() || !isMethod, timed.tags());
                 }
 
                 final org.eclipse.microprofile.metrics.annotation.Metered metered = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class))
                         .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class));
                 if (metered != null) {
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, metered.name(), metered.absolute());
+                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, metered.name(), metered.absolute(),
+                            ofNullable(annotatedType.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
                     final Metadata metadata = new Metadata(name, metered.displayName(), metered.description(), MetricType.METERED, metered.unit());
                     Stream.of(metered.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, metered.reusable(), metered.tags());
+                    addRegistration(method, name, metadata, metered.reusable() || !method.isAnnotationPresent(Metered.class), metered.tags());
                 }
 
                 final org.eclipse.microprofile.metrics.annotation.Gauge gauge = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class))
                         .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class));
                 if (gauge != null) {
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, gauge.name(), gauge.absolute());
+                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, gauge.name(), gauge.absolute(),
+                            ofNullable(annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class)).map(org.eclipse.microprofile.metrics.annotation.Gauge::name).orElse(""));
                     final Metadata metadata = new Metadata(name, gauge.displayName(), gauge.description(), MetricType.GAUGE, gauge.unit());
                     Stream.of(gauge.tags()).forEach(metadata::addTag);
                     addRegistration(method, name, metadata, false, gauge.tags());

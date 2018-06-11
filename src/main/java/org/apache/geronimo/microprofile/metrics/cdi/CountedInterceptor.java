@@ -16,6 +16,8 @@
  */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
+import static java.util.Optional.ofNullable;
+
 import java.io.Serializable;
 import java.lang.reflect.Executable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -91,7 +93,10 @@ public class CountedInterceptor implements Serializable {
                     .findFirst()
                     .map(m -> m.getAnnotation(Counted.class))
                     .orElse(null);
-            final String name = Names.findName(type.getJavaClass(), executable, counted == null ? null : counted.name(), counted != null && counted.absolute());
+            final String name = Names.findName(
+                    type.getJavaClass(), executable, counted == null ? null : counted.name(),
+                    counted != null && counted.absolute(),
+                    ofNullable(type.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
 
             final Counter counter = Counter.class.cast(registry.getMetrics().get(name));
             if (counter == null) {
