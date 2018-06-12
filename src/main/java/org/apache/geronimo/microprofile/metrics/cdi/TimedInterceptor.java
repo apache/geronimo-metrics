@@ -20,6 +20,7 @@ import static java.util.Optional.ofNullable;
 
 import java.io.Serializable;
 import java.lang.reflect.Executable;
+import java.lang.reflect.Modifier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
@@ -85,7 +86,8 @@ public class TimedInterceptor implements Serializable {
                     .map(m -> m.getAnnotation(Timed.class))
                     .orElse(null);
             final String name = Names.findName(
-                    type.getJavaClass(), executable, timed == null ? null : timed.name(), timed != null && timed.absolute(),
+                    Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
+                    executable, timed == null ? null : timed.name(), timed != null && timed.absolute(),
                     ofNullable(type.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
             timer = Timer.class.cast(registry.getMetrics().get(name));
             if (timer == null) {

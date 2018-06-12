@@ -20,6 +20,7 @@ import static java.util.Optional.ofNullable;
 
 import java.io.Serializable;
 import java.lang.reflect.Executable;
+import java.lang.reflect.Modifier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
@@ -84,7 +85,7 @@ public class MeteredInterceptor implements Serializable {
                     .map(m -> m.getAnnotation(Metered.class))
                     .orElse(null);
             final String name = Names.findName(
-                    type.getJavaClass(),
+                    Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, metered == null ? null : metered.name(),
                     metered != null && metered.absolute(),
                     ofNullable(type.getAnnotation(Metered.class)).map(Metered::name).orElse(""));

@@ -189,22 +189,25 @@ public class MetricsExtension implements Extension {
             org.eclipse.microprofile.metrics.annotation.Metered.class,
             org.eclipse.microprofile.metrics.annotation.Gauge.class
     }) final ProcessAnnotatedType<?> pat) {
-        if (pat.getAnnotatedType().getJavaClass().getName().startsWith("org.apache.geronimo.microprofile.metrics.") ||
-                Modifier.isAbstract(pat.getAnnotatedType().getJavaClass().getModifiers()) ||
-                pat.getAnnotatedType().getJavaClass().isInterface()) {
+        final AnnotatedType<?> annotatedType = pat.getAnnotatedType();
+        final Class<?> javaClass = annotatedType.getJavaClass();
+        if (javaClass.getName().startsWith("org.apache.geronimo.microprofile.metrics.") ||
+                Modifier.isAbstract(javaClass.getModifiers()) ||
+                javaClass.isInterface()) {
             return;
         }
-        final AnnotatedType<?> annotatedType = pat.getAnnotatedType();
+
         Stream.concat(annotatedType.getMethods().stream(), annotatedType.getConstructors().stream())
+                .filter(method -> method.getJavaMember().getDeclaringClass() == javaClass || Modifier.isAbstract(method.getJavaMember().getDeclaringClass().getModifiers()))
                 .filter(method -> !method.getJavaMember().isSynthetic() && !Modifier.isPrivate(method.getJavaMember().getModifiers()))
                 .forEach(method -> {
                     final Member javaMember = method.getJavaMember();
 
-                    final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() -> annotatedType.getAnnotation(Counted.class));
-                    final Class<?> javaClass = annotatedType.getJavaClass();
+                    final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() ->
+                            annotatedType.getAnnotation(Counted.class));
                     if (counted != null) {
                         final boolean isMethod = method.isAnnotationPresent(Counted.class);
-                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? counted.name() : "", counted.absolute(),
+                        final String name = Names.findName(javaClass, javaMember, isMethod ? counted.name() : "", counted.absolute(),
                                 ofNullable(annotatedType.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
                         final Metadata metadata = new Metadata(name, counted.displayName(), counted.description(), MetricType.COUNTER, counted.unit());
                         Stream.of(counted.tags()).forEach(metadata::addTag);
@@ -214,7 +217,7 @@ public class MetricsExtension implements Extension {
                     final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> annotatedType.getAnnotation(Timed.class));
                     if (timed != null) {
                         final boolean isMethod = method.isAnnotationPresent(Timed.class);
-                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? timed.name() : "", timed.absolute(),
+                        final String name = Names.findName(javaClass, javaMember, isMethod ? timed.name() : "", timed.absolute(),
                                 ofNullable(annotatedType.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
                         final Metadata metadata = new Metadata(name, timed.displayName(), timed.description(), MetricType.TIMER, timed.unit());
                         Stream.of(timed.tags()).forEach(metadata::addTag);
@@ -225,7 +228,7 @@ public class MetricsExtension implements Extension {
                             .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class));
                     if (metered != null) {
                         final boolean isMethod = method.isAnnotationPresent(Metered.class);
-                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? metered.name() : "", metered.absolute(),
+                        final String name = Names.findName(javaClass, javaMember, isMethod ? metered.name() : "", metered.absolute(),
                                 ofNullable(annotatedType.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
                         final Metadata metadata = new Metadata(name, metered.displayName(), metered.description(), MetricType.METERED, metered.unit());
                         Stream.of(metered.tags()).forEach(metadata::addTag);
@@ -233,9 +236,11 @@ public class MetricsExtension implements Extension {
                     }
 
                     final org.eclipse.microprofile.metrics.annotation.Gauge gauge = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class))
-                            .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class));
+                            .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation
+                                    .Gauge.class));
                     if (gauge != null) {
-                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, gauge.name(), gauge.absolute(),
+                        final String name = Names.findName(
+                                javaClass, javaMember, gauge.name(), gauge.absolute(),
                                 ofNullable(annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class)).map(org.eclipse.microprofile.metrics.annotation.Gauge::name).orElse(""));
                         final Metadata metadata = new Metadata(name, gauge.displayName(), gauge.description(), MetricType.GAUGE, gauge.unit());
                         Stream.of(gauge.tags()).forEach(metadata::addTag);
