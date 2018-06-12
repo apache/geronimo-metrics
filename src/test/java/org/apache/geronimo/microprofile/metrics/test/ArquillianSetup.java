@@ -1,6 +1,9 @@
 package org.apache.geronimo.microprofile.metrics.test;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.stream.Stream;
 
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
@@ -18,11 +21,13 @@ import org.jboss.arquillian.container.test.impl.client.protocol.local.LocalProto
 import org.jboss.arquillian.container.test.spi.client.deployment.ApplicationArchiveProcessor;
 import org.jboss.arquillian.container.test.spi.client.deployment.DeploymentPackager;
 import org.jboss.arquillian.container.test.spi.client.protocol.Protocol;
+import org.jboss.arquillian.core.api.Instance;
 import org.jboss.arquillian.core.api.InstanceProducer;
 import org.jboss.arquillian.core.api.annotation.Inject;
 import org.jboss.arquillian.core.api.annotation.Observes;
 import org.jboss.arquillian.core.spi.LoadableExtension;
 import org.jboss.arquillian.test.spi.TestClass;
+import org.jboss.arquillian.test.spi.TestEnricher;
 import org.jboss.arquillian.test.spi.event.suite.Before;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
@@ -35,6 +40,7 @@ public class ArquillianSetup implements LoadableExtension {
         extensionBuilder.observer(EnvSetup.class)
                 .override(DeployableContainer.class, MeecrowaveContainer.class, TckContainer.class)
                 .override(Protocol.class, LocalProtocol.class, ForceWarProtocol.class)
+                .service(TestEnricher.class, ParamEnricher.class)
                 .service(ApplicationArchiveProcessor.class, EnsureTestIsInTheArchiveProcessor.class);
     }
 
@@ -83,6 +89,41 @@ public class ArquillianSetup implements LoadableExtension {
             } finally {
                 thread.setContextClassLoader(classLoader);
             }
+        }
+    }
+
+    public static class ParamEnricher implements TestEnricher {
+        @Inject
+        @DeploymentScoped
+        private Instance<BeanManager> beanManagerInstanceProducer;
+
+        @Inject
+        @DeploymentScoped
+        private Instance<ClassLoader> appClassLoaderInstanceProducer;
+
+        @Override
+        public void enrich(final Object testCase) {
+            // no-op
+        }
+
+        @Override
+        public Object[] resolve(final Method method) {
+            return Stream.of(method.getParameters())
+                    .map(p -> {
+                        final Thread thread = Thread.currentThread();
+                        final ClassLoader classLoader = thread.getContextClassLoader();
+                        thread.setContextClassLoader(appClassLoaderInstanceProducer.get());
+                        try {
+                            final CDI<Object> cdi = CDI.current();
+                            final Annotation[] qualifiers = Stream.of(p.getAnnotations()).filter(it -> cdi.getBeanManager().isQualifier(it.annotationType())).toArray(Annotation[]::new);
+                            return cdi.select(p.getType(), qualifiers).get();
+                        } catch (final RuntimeException re) {
+                            return null;
+                        } finally {
+                            thread.setContextClassLoader(classLoader);
+                        }
+                    })
+                    .toArray();
         }
     }
 
