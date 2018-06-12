@@ -20,6 +20,7 @@ import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -51,6 +52,8 @@ import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
 import javax.enterprise.inject.spi.ProcessInjectionPoint;
+import javax.enterprise.inject.spi.ProcessProducerField;
+import javax.enterprise.inject.spi.ProcessProducerMethod;
 import javax.enterprise.inject.spi.WithAnnotations;
 import javax.enterprise.util.AnnotationLiteral;
 import javax.enterprise.util.Nonbinding;
@@ -74,12 +77,15 @@ import org.eclipse.microprofile.metrics.annotation.RegistryType;
 import org.eclipse.microprofile.metrics.annotation.Timed;
 
 public class MetricsExtension implements Extension {
+    private static final Annotation[] EMPTY_ANNOTATIONS = new Annotation[0];
+
     private final MetricRegistry applicationRegistry = new RegistryImpl();
     private final MetricRegistry baseRegistry = new RegistryImpl();
     private final MetricRegistry vendorRegistry = new RegistryImpl();
 
     private final Map<String, Metadata> registrations = new HashMap<>();
     private final Map<String, Function<BeanManager, Gauge<?>>> gaugeFactories = new HashMap<>();
+    private final Collection<Runnable> producersRegistrations = new ArrayList<>();
     private final Collection<CreationalContext<?>> creationalContexts = new ArrayList<>();
 
     void letOtherExtensionsUseRegistries(@Observes final ProcessAnnotatedType<MetricsEndpoints> processAnnotatedType) {
@@ -101,6 +107,37 @@ public class MetricsExtension implements Extension {
                 .forEach(method -> method.remove(a -> a.annotationType() == Nonbinding.class));
     }
 
+    private void onMetric(@Observes final ProcessProducerField<? extends Metric, ?> processProducerField, final BeanManager beanManager) {
+        final org.eclipse.microprofile.metrics.annotation.Metric config = processProducerField.getAnnotated()
+                .getAnnotation(org.eclipse.microprofile.metrics.annotation.Metric.class);
+        if (config == null) {
+            return;
+        }
+        final Class<?> clazz = findClass(processProducerField.getAnnotated().getBaseType());
+        if (clazz == null || !Metric.class.isAssignableFrom(clazz)) {
+            return;
+        }
+        final Member javaMember = processProducerField.getAnnotatedProducerField().getJavaMember();
+        final Bean<?> bean = processProducerField.getBean();
+        producersRegistrations.add(() -> registerProducer(beanManager, config, clazz, javaMember, bean));
+    }
+
+    private void onMetric(@Observes ProcessProducerMethod<? extends Metric, ?> processProducerMethod,
+                          final BeanManager beanManager) {
+        final org.eclipse.microprofile.metrics.annotation.Metric config = processProducerMethod.getAnnotated()
+                .getAnnotation(org.eclipse.microprofile.metrics.annotation.Metric.class);
+        if (config == null) {
+            return;
+        }
+        final Class<?> clazz = findClass(processProducerMethod.getAnnotated().getBaseType());
+        if (clazz == null || !Metric.class.isAssignableFrom(clazz)) {
+            return;
+        }
+        final Member javaMember = processProducerMethod.getAnnotatedProducerMethod().getJavaMember();
+        final Bean<?> bean = processProducerMethod.getBean();
+        producersRegistrations.add(() -> registerProducer(beanManager, config, clazz, javaMember, bean));
+    }
+
     void onMetric(@Observes final ProcessInjectionPoint<?, ?> metricInjectionPointProcessEvent) {
         final InjectionPoint injectionPoint = metricInjectionPointProcessEvent.getInjectionPoint();
         final Class<?> clazz = findClass(injectionPoint.getType());
@@ -111,21 +148,7 @@ public class MetricsExtension implements Extension {
         final Annotated annotated = injectionPoint.getAnnotated();
         final org.eclipse.microprofile.metrics.annotation.Metric config = annotated.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metric.class);
 
-        final MetricType type;
-        if (Counter.class.isAssignableFrom(clazz)) {
-            type = MetricType.COUNTER;
-        } else if (Gauge.class.isAssignableFrom(clazz)) {
-            type = MetricType.GAUGE;
-        } else if (Meter.class.isAssignableFrom(clazz)) {
-            type = MetricType.METERED;
-        } else if (Timer.class.isAssignableFrom(clazz)) {
-            type = MetricType.TIMER;
-        } else if (Histogram.class.isAssignableFrom(clazz)) {
-            type = MetricType.HISTOGRAM;
-        } else {
-            type = MetricType.INVALID;
-        }
-
+        final MetricType type = findType(clazz);
         if (config != null) {
             String name = Names.findName(injectionPoint.getMember().getDeclaringClass(), injectionPoint.getMember(),
                     of(config.name()).filter(it -> !it.isEmpty()).orElseGet(injectionPoint.getMember()::getName), config.absolute(),
@@ -173,63 +196,57 @@ public class MetricsExtension implements Extension {
         }
         final AnnotatedType<?> annotatedType = pat.getAnnotatedType();
         Stream.concat(annotatedType.getMethods().stream(), annotatedType.getConstructors().stream())
-            .filter(method -> !method.getJavaMember().isSynthetic() && !Modifier.isPrivate(method.getJavaMember().getModifiers()))
-            .forEach(method -> {
-                final Member javaMember = method.getJavaMember();
+                .filter(method -> !method.getJavaMember().isSynthetic() && !Modifier.isPrivate(method.getJavaMember().getModifiers()))
+                .forEach(method -> {
+                    final Member javaMember = method.getJavaMember();
 
-                final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() -> annotatedType.getAnnotation(Counted.class));
-                final Class<?> javaClass = annotatedType.getJavaClass();
-                if (counted != null) {
-                    final boolean isMethod = method.isAnnotationPresent(Counted.class);
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? counted.name() : "", counted.absolute(),
-                            ofNullable(annotatedType.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
-                    final Metadata metadata = new Metadata(name, counted.displayName(), counted.description(), MetricType.COUNTER, counted.unit());
-                    Stream.of(counted.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, counted.reusable() || !isMethod, counted.tags());
-                }
+                    final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() -> annotatedType.getAnnotation(Counted.class));
+                    final Class<?> javaClass = annotatedType.getJavaClass();
+                    if (counted != null) {
+                        final boolean isMethod = method.isAnnotationPresent(Counted.class);
+                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? counted.name() : "", counted.absolute(),
+                                ofNullable(annotatedType.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
+                        final Metadata metadata = new Metadata(name, counted.displayName(), counted.description(), MetricType.COUNTER, counted.unit());
+                        Stream.of(counted.tags()).forEach(metadata::addTag);
+                        addRegistration(method, name, metadata, counted.reusable() || !isMethod, counted.tags());
+                    }
 
-                final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> annotatedType.getAnnotation(Timed.class));
-                if (timed != null) {
-                    final boolean isMethod = method.isAnnotationPresent(Timed.class);
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? timed.name() : "", timed.absolute(),
-                            ofNullable(annotatedType.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
-                    final Metadata metadata = new Metadata(name, timed.displayName(), timed.description(), MetricType.TIMER, timed.unit());
-                    Stream.of(timed.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, timed.reusable() || !isMethod, timed.tags());
-                }
+                    final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> annotatedType.getAnnotation(Timed.class));
+                    if (timed != null) {
+                        final boolean isMethod = method.isAnnotationPresent(Timed.class);
+                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? timed.name() : "", timed.absolute(),
+                                ofNullable(annotatedType.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
+                        final Metadata metadata = new Metadata(name, timed.displayName(), timed.description(), MetricType.TIMER, timed.unit());
+                        Stream.of(timed.tags()).forEach(metadata::addTag);
+                        addRegistration(method, name, metadata, timed.reusable() || !isMethod, timed.tags());
+                    }
 
-                final org.eclipse.microprofile.metrics.annotation.Metered metered = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class))
-                        .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class));
-                if (metered != null) {
-                    final boolean isMethod = method.isAnnotationPresent(Metered.class);
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? metered.name() : "", metered.absolute(),
-                            ofNullable(annotatedType.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
-                    final Metadata metadata = new Metadata(name, metered.displayName(), metered.description(), MetricType.METERED, metered.unit());
-                    Stream.of(metered.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, metered.reusable() || !isMethod, metered.tags());
-                }
+                    final org.eclipse.microprofile.metrics.annotation.Metered metered = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class))
+                            .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class));
+                    if (metered != null) {
+                        final boolean isMethod = method.isAnnotationPresent(Metered.class);
+                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, isMethod ? metered.name() : "", metered.absolute(),
+                                ofNullable(annotatedType.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
+                        final Metadata metadata = new Metadata(name, metered.displayName(), metered.description(), MetricType.METERED, metered.unit());
+                        Stream.of(metered.tags()).forEach(metadata::addTag);
+                        addRegistration(method, name, metadata, metered.reusable() || !isMethod, metered.tags());
+                    }
 
-                final org.eclipse.microprofile.metrics.annotation.Gauge gauge = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class))
-                        .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class));
-                if (gauge != null) {
-                    final String name = Names.findName(annotatedType.getJavaClass(), javaMember, gauge.name(), gauge.absolute(),
-                            ofNullable(annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class)).map(org.eclipse.microprofile.metrics.annotation.Gauge::name).orElse(""));
-                    final Metadata metadata = new Metadata(name, gauge.displayName(), gauge.description(), MetricType.GAUGE, gauge.unit());
-                    Stream.of(gauge.tags()).forEach(metadata::addTag);
-                    addRegistration(method, name, metadata, false, gauge.tags());
-                    gaugeFactories.put(name, beanManager -> {
-                        final CreationalContext<Object> creationalContext = beanManager.createCreationalContext(null);
-                        final Bean<?> bean = beanManager.resolve(beanManager.getBeans(javaClass, Default.Literal.INSTANCE));
-                        final Object reference = beanManager.getReference(bean, javaClass, creationalContext);
-                        final Method mtd = Method.class.cast(javaMember);
-                        final Gauge<?> instance = new GaugeImpl<>(reference, mtd);
-                        if (!beanManager.isNormalScope(bean.getScope())) {
-                            creationalContexts.add(creationalContext);
-                        }
-                        return instance;
-                    });
-                }
-            });
+                    final org.eclipse.microprofile.metrics.annotation.Gauge gauge = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class))
+                            .orElseGet(() -> annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class));
+                    if (gauge != null) {
+                        final String name = Names.findName(annotatedType.getJavaClass(), javaMember, gauge.name(), gauge.absolute(),
+                                ofNullable(annotatedType.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class)).map(org.eclipse.microprofile.metrics.annotation.Gauge::name).orElse(""));
+                        final Metadata metadata = new Metadata(name, gauge.displayName(), gauge.description(), MetricType.GAUGE, gauge.unit());
+                        Stream.of(gauge.tags()).forEach(metadata::addTag);
+                        addRegistration(method, name, metadata, false, gauge.tags());
+                        gaugeFactories.put(name, beanManager -> {
+                            final Object reference = getInstance(javaClass, beanManager);
+                            final Method mtd = Method.class.cast(javaMember);
+                            return new GaugeImpl<>(reference, mtd);
+                        });
+                    }
+                });
     }
 
     void afterBeanDiscovery(@Observes final AfterBeanDiscovery afterBeanDiscovery, final BeanManager beanManager) {
@@ -244,6 +261,7 @@ public class MetricsExtension implements Extension {
                 case GAUGE:
                     addBean(afterBeanDiscovery, name, Gauge.class, new MetricImpl(registration), new Gauge<Object>() {
                         private final AtomicReference<Gauge<?>> ref = new AtomicReference<>();
+
                         @Override
                         public Object getValue() {
                             Gauge<?> gauge = ref.get();
@@ -279,7 +297,9 @@ public class MetricsExtension implements Extension {
                     final Gauge<?> gauge = gaugeFactories.get(registration.getName()).apply(beanManager);
                     applicationRegistry.register(registration, gauge);
                 });
+        producersRegistrations.forEach(Runnable::run);
 
+        producersRegistrations.clear();
         gaugeFactories.clear();
         registrations.clear();
 
@@ -295,6 +315,48 @@ public class MetricsExtension implements Extension {
         creationalContexts.forEach(CreationalContext::release);
     }
 
+    private void registerProducer(final BeanManager beanManager, final org.eclipse.microprofile.metrics.annotation.Metric config,
+                                  final Class<?> clazz, final Member javaMember, final Bean<?> bean) {
+        Class<?> beanClass = bean.getBeanClass();
+        if (beanClass == null) {
+            beanClass = javaMember.getDeclaringClass();
+        }
+        final Metadata metadata = createMetadata(config, clazz, javaMember, beanClass);
+        applicationRegistry.register(metadata, Metric.class.cast(getInstance(clazz, beanManager, bean)));
+    }
+
+    private Metadata createMetadata(final org.eclipse.microprofile.metrics.annotation.Metric config,
+                                    final Class<?> clazz, final Member javaMember, final Class<?> beanClass) {
+        final String name = Names.findName(beanClass, javaMember,
+                of(config.name()).filter(it -> !it.isEmpty()).orElseGet(javaMember::getName), config.absolute(),
+                "");
+        final Metadata metadata = new Metadata(name, config.displayName(), config.description(), findType(clazz), config.unit());
+        Stream.of(config.tags()).forEach(metadata::addTag);
+        final Metadata existing = registrations.putIfAbsent(name, metadata);
+        if (existing != null) { // merge tags
+            Stream.of(config.tags()).forEach(existing::addTag);
+        }
+        return metadata;
+    }
+
+    private MetricType findType(final Class<?> clazz) {
+        final MetricType type;
+        if (Counter.class.isAssignableFrom(clazz)) {
+            type = MetricType.COUNTER;
+        } else if (Gauge.class.isAssignableFrom(clazz)) {
+            type = MetricType.GAUGE;
+        } else if (Meter.class.isAssignableFrom(clazz)) {
+            type = MetricType.METERED;
+        } else if (Timer.class.isAssignableFrom(clazz)) {
+            type = MetricType.TIMER;
+        } else if (Histogram.class.isAssignableFrom(clazz)) {
+            type = MetricType.HISTOGRAM;
+        } else {
+            type = MetricType.INVALID;
+        }
+        return type;
+    }
+
     private Class<?> findClass(final Type baseType) {
         Type type = baseType;
         if (ParameterizedType.class.isInstance(baseType)) {
@@ -304,6 +366,20 @@ public class MetricsExtension implements Extension {
             return Class.class.cast(type);
         }
         return null;
+    }
+
+    private Object getInstance(final Class<?> javaClass, final BeanManager beanManager) {
+        final Bean<?> bean = beanManager.resolve(beanManager.getBeans(javaClass, Default.Literal.INSTANCE));
+        return getInstance(javaClass, beanManager, bean);
+    }
+
+    private Object getInstance(final Class<?> javaClass, final BeanManager beanManager, final Bean<?> bean) {
+        final CreationalContext<Object> creationalContext = beanManager.createCreationalContext(null);
+        final Object reference = beanManager.getReference(bean, javaClass, creationalContext);
+        if (!beanManager.isNormalScope(bean.getScope())) {
+            creationalContexts.add(creationalContext);
+        }
+        return reference;
     }
 
     private void addRegistration(final AnnotatedCallable<?> executable, final String name, final Metadata metadata, final boolean reusable, final String[] tags) {
