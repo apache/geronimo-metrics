@@ -102,7 +102,7 @@ public class CountedInterceptor implements Serializable {
             if (counter == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }
-            meta = new Meta(counter, counted != null && counted.monotonic());
+            meta = new Meta(counter, ofNullable(counted).orElseGet(() -> type.getAnnotation(Counted.class)).monotonic());
             counters.putIfAbsent(executable, meta);
         }
         return meta;

@@ -16,6 +16,8 @@
  */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
+import static java.util.Optional.ofNullable;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Member;
 
@@ -43,6 +45,12 @@ final class Names {
     }
 
     private static String prefix(final Class<?> declaring, final String prefix) {
-        return prefix.isEmpty() ? declaring.getName() : declaring.getPackage().getName() + '.' + prefix;
+        return prefix.isEmpty() ?
+                declaring.getName() :
+                ofNullable(declaring.getPackage())
+                        .map(Package::getName)
+                        .filter(p -> !p.isEmpty())
+                        .map(p -> p + '.' + prefix)
+                        .orElse("");
     }
 }

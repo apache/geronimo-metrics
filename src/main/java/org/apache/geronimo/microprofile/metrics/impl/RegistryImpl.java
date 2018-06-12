@@ -43,8 +43,8 @@ public class RegistryImpl extends MetricRegistry {
     @Override
     public <T extends Metric> T register(final Metadata metadata, final T metric) throws IllegalArgumentException {
         final Holder<? extends Metric> holder = metrics.putIfAbsent(metadata.getName(), new Holder<>(metric, metadata));
-        if (holder != null) {
-            throw new IllegalArgumentException("'" + metadata.getName() + "' metric already exists");
+        if (holder != null && !metadata.isReusable() && !holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("'" + metadata.getName() + "' metric already exists and is not reusable");
         }
         return metric;
     }
@@ -82,6 +82,13 @@ public class RegistryImpl extends MetricRegistry {
             if (existing != null) {
                 holder = existing;
             }
+        } else if (!metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and is not set as reusable");
+        } else if (!holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and was not set as reusable");
+        }
+        if (!Counter.class.isInstance(holder.metric)) {
+            throw new IllegalArgumentException(holder.metric + " is not a counter");
         }
         return Counter.class.cast(holder.metric);
     }
@@ -95,6 +102,13 @@ public class RegistryImpl extends MetricRegistry {
             if (existing != null) {
                 holder = existing;
             }
+        } else if (!metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and is not set as reusable");
+        } else if (!holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and was not set as reusable");
+        }
+        if (!Histogram.class.isInstance(holder.metric)) {
+            throw new IllegalArgumentException(holder.metric + " is not a histogram");
         }
         return Histogram.class.cast(holder.metric);
     }
@@ -108,6 +122,13 @@ public class RegistryImpl extends MetricRegistry {
             if (existing != null) {
                 holder = existing;
             }
+        } else if (!metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and is not set as reusable");
+        } else if (!holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and was not set as reusable");
+        }
+        if (!Meter.class.isInstance(holder.metric)) {
+            throw new IllegalArgumentException(holder.metric + " is not a meter");
         }
         return Meter.class.cast(holder.metric);
     }
@@ -121,6 +142,13 @@ public class RegistryImpl extends MetricRegistry {
             if (existing != null) {
                 holder = existing;
             }
+        } else if (!metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and is not set as reusable");
+        } else if (!holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and was not set as reusable");
+        }
+        if (!Timer.class.isInstance(holder.metric)) {
+            throw new IllegalArgumentException(holder.metric + " is not a timer");
         }
         return Timer.class.cast(holder.metric);
     }
@@ -235,7 +263,9 @@ public class RegistryImpl extends MetricRegistry {
 
         private Holder(final T metric, final Metadata metadata) {
             this.metric = metric;
-            this.metadata = metadata;
+            this.metadata = new Metadata(metadata.getName(), metadata.getDisplayName(), metadata.getDescription(), metadata.getTypeRaw(), metadata.getUnit());
+            this.metadata.setReusable(metadata.isReusable());
+            this.metadata.setTags(metadata.getTags());
         }
     }
 }
