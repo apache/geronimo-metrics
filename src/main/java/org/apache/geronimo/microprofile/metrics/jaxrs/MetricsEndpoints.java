@@ -16,6 +16,7 @@
  */
 package org.apache.geronimo.microprofile.metrics.jaxrs;
 
+import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.joining;
@@ -23,6 +24,7 @@ import static java.util.stream.Collectors.toMap;
 import static org.eclipse.microprofile.metrics.MetricRegistry.Type.BASE;
 import static org.eclipse.microprofile.metrics.MetricRegistry.Type.VENDOR;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -102,7 +104,7 @@ public class MetricsEndpoints {
     @Produces(MediaType.APPLICATION_JSON)
     public Object getJson(@PathParam("registry") final String registry,
                           @PathParam("metric") final String name) {
-        return singletonMap(name, findRegistry(registry).getMetrics().get(name));
+        return singleEntry(name, findRegistry(registry));
     }
 
     @GET
@@ -111,7 +113,10 @@ public class MetricsEndpoints {
     public String getText(@PathParam("registry") final String registry,
                           @PathParam("metric") final String name) {
         final MetricRegistry metricRegistry = findRegistry(registry);
-        return prometheus.toText(metricRegistry, registry, singletonMap(name, metricRegistry.getMetrics().get(name))).toString();
+        return prometheus.toText(
+                metricRegistry, registry,
+                singleEntry(name, metricRegistry))
+                .toString();
     }
 
     @OPTIONS
@@ -119,7 +124,9 @@ public class MetricsEndpoints {
     @Produces(MediaType.APPLICATION_JSON)
     public Object getMetadata(@PathParam("registry") final String registry,
                           @PathParam("metric") final String name) {
-        return singletonMap(name, mapMeta(findRegistry(registry).getMetadata().get(name)));
+        return ofNullable(findRegistry(registry).getMetadata().get(name))
+                .map(metric -> singletonMap(name, mapMeta(metric)))
+                .orElse(emptyMap());
     }
 
     @OPTIONS
@@ -128,6 +135,12 @@ public class MetricsEndpoints {
     public Object getMetadata(@PathParam("registry") final String registry) {
         return findRegistry(registry).getMetadata().entrySet().stream()
                 .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue())));
+    }
+
+    private Map<String, Metric> singleEntry(final String name, final MetricRegistry metricRegistry) {
+        return ofNullable(metricRegistry.getMetrics().get(name))
+                .map(metric -> singletonMap(name, metric))
+                .orElseGet(Collections::emptyMap);
     }
 
     private Meta mapMeta(final Metadata value) {
