@@ -20,7 +20,6 @@ import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -58,10 +57,10 @@ import javax.enterprise.inject.spi.WithAnnotations;
 import javax.enterprise.util.AnnotationLiteral;
 import javax.enterprise.util.Nonbinding;
 
-import org.apache.geronimo.microprofile.metrics.impl.BaseMetrics;
-import org.apache.geronimo.microprofile.metrics.impl.GaugeImpl;
-import org.apache.geronimo.microprofile.metrics.impl.RegistryImpl;
-import org.apache.geronimo.microprofile.metrics.jaxrs.MetricsEndpoints;
+import org.apache.geronimo.microprofile.metrics.common.BaseMetrics;
+import org.apache.geronimo.microprofile.metrics.common.GaugeImpl;
+import org.apache.geronimo.microprofile.metrics.common.RegistryImpl;
+import org.apache.geronimo.microprofile.metrics.jaxrs.CdiMetricsEndpoints;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Histogram;
@@ -77,8 +76,6 @@ import org.eclipse.microprofile.metrics.annotation.RegistryType;
 import org.eclipse.microprofile.metrics.annotation.Timed;
 
 public class MetricsExtension implements Extension {
-    private static final Annotation[] EMPTY_ANNOTATIONS = new Annotation[0];
-
     private final MetricRegistry applicationRegistry = new RegistryImpl();
     private final MetricRegistry baseRegistry = new RegistryImpl();
     private final MetricRegistry vendorRegistry = new RegistryImpl();
@@ -88,7 +85,7 @@ public class MetricsExtension implements Extension {
     private final Collection<Runnable> producersRegistrations = new ArrayList<>();
     private final Collection<CreationalContext<?>> creationalContexts = new ArrayList<>();
 
-    void letOtherExtensionsUseRegistries(@Observes final ProcessAnnotatedType<MetricsEndpoints> processAnnotatedType) {
+    void letOtherExtensionsUseRegistries(@Observes final ProcessAnnotatedType<CdiMetricsEndpoints> processAnnotatedType) {
         if (!Boolean.getBoolean("geronimo.metrics.jaxrs.activated")) {
             processAnnotatedType.veto();
         }

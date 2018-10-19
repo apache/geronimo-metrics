@@ -14,22 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.geronimo.microprofile.metrics.jaxrs;
+package org.apache.geronimo.microprofile.metrics.common.jaxrs;
 
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toMap;
-import static org.eclipse.microprofile.metrics.MetricRegistry.Type.BASE;
-import static org.eclipse.microprofile.metrics.MetricRegistry.Type.VENDOR;
 
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.OPTIONS;
 import javax.ws.rs.Path;
@@ -39,29 +35,32 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+import org.apache.geronimo.microprofile.metrics.common.prometheus.PrometheusFormatter;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Metadata;
 import org.eclipse.microprofile.metrics.Metric;
 import org.eclipse.microprofile.metrics.MetricRegistry;
-import org.eclipse.microprofile.metrics.annotation.RegistryType;
 
 @Path("metrics")
-@ApplicationScoped
 public class MetricsEndpoints {
-    @Inject
-    @RegistryType(type = BASE)
     private MetricRegistry baseRegistry;
-
-    @Inject
-    @RegistryType(type = VENDOR)
     private MetricRegistry vendorRegistry;
-
-    @Inject
     private MetricRegistry applicationRegistry;
 
-    @Inject
-    private PrometheusFormatter prometheus;
+    private final PrometheusFormatter prometheus = new PrometheusFormatter();
+
+    public void setBaseRegistry(final MetricRegistry baseRegistry) {
+        this.baseRegistry = baseRegistry;
+    }
+
+    public void setVendorRegistry(final MetricRegistry vendorRegistry) {
+        this.vendorRegistry = vendorRegistry;
+    }
+
+    public void setApplicationRegistry(final MetricRegistry applicationRegistry) {
+        this.applicationRegistry = applicationRegistry;
+    }
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)

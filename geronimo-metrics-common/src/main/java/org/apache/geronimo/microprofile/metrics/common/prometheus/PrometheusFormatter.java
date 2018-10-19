@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.geronimo.microprofile.metrics.jaxrs;
+package org.apache.geronimo.microprofile.metrics.common.prometheus;
 
 import static java.lang.Math.pow;
 import static java.util.Collections.singletonMap;
@@ -25,8 +25,6 @@ import static java.util.stream.Collectors.joining;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
-
-import javax.enterprise.context.ApplicationScoped;
 
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
@@ -42,7 +40,6 @@ import org.eclipse.microprofile.metrics.Timer;
 // this is so weird to have this format built-in but not mainstream ones,
 // todo: pby make it dropped from the spec
 // note: this is a simplified serialization flavor and it can need some more love
-@ApplicationScoped
 public class PrometheusFormatter {
     public StringBuilder toText(final MetricRegistry registry,
                                 final String registryKey,
