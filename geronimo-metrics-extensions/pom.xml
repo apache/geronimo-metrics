@@ -27,11 +27,11 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>geronimo-metrics-common</artifactId>
-  <name>Geronimo Metrics :: Common</name>
-  <packaging>bundle</packaging>
+  <artifactId>geronimo-metrics-extensions</artifactId>
+  <packaging>pom</packaging>
+  <name>Geronimo Metrics :: Extensions</name>
 
-  <properties>
-    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics.common</geronimo-metrics.Automatic-Module-Name>
-  </properties>
+  <modules>
+    <module>geronimo-metrics-sigar</module>
+  </modules>
 </project>
