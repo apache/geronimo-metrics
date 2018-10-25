@@ -21,19 +21,17 @@
             http://maven.apache.org/POM/4.0.0
             http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <parent>
-    <artifactId>geronimo-metrics-parent</artifactId>
+    <artifactId>geronimo-metrics-extensions</artifactId>
     <groupId>org.apache.geronimo</groupId>
     <version>1.0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>geronimo-metrics-extensions</artifactId>
-  <packaging>pom</packaging>
-  <name>Geronimo Metrics :: Extensions</name>
+  <artifactId>geronimo-metrics-extension-common</artifactId>
+  <name>Geronimo Metrics :: Extensions :: Common</name>
+  <packaging>bundle</packaging>
 
-  <modules>
-    <module>geronimo-metrics-sigar</module>
-    <module>geronimo-metrics-tomcat</module>
-    <module>geronimo-metrics-extension-common</module>
-  </modules>
+  <properties>
+    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics.extension.common</geronimo-metrics.Automatic-Module-Name>
+  </properties>
 </project>

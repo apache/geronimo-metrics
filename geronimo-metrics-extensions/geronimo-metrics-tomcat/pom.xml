@@ -27,45 +27,26 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>geronimo-metrics-sigar</artifactId>
-  <name>Geronimo Metrics :: Extensions :: Sigar</name>
+  <artifactId>geronimo-metrics-tomcat</artifactId>
+  <name>Geronimo Metrics :: Extensions :: Tomcat</name>
   <packaging>bundle</packaging>
 
   <properties>
-    <sigar.version>1.6.4</sigar.version>
-    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics.sigar</geronimo-metrics.Automatic-Module-Name>
+    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics.tomcat</geronimo-metrics.Automatic-Module-Name>
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>tomcat-catalina</artifactId>
+      <version>9.0.10</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.geronimo.specs</groupId>
       <artifactId>geronimo-jcdi_2.0_spec</artifactId>
       <version>1.0.1</version>
       <scope>provided</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>org.fusesource</groupId>
-      <artifactId>sigar</artifactId>
-      <version>${sigar.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>log4j</groupId>
-          <artifactId>log4j</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.fusesource</groupId>
-      <artifactId>sigar</artifactId>
-      <version>${sigar.version}</version>
-      <classifier>native</classifier>
-      <exclusions>
-        <exclusion>
-          <groupId>log4j</groupId>
-          <artifactId>log4j</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
 
     <dependency>

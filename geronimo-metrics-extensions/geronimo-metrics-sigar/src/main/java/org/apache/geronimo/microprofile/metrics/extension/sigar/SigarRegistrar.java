@@ -30,6 +30,8 @@ import java.util.function.DoubleSupplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import org.apache.geronimo.microprofile.metrics.extension.common.Definition;
+import org.apache.geronimo.microprofile.metrics.extension.common.ThrowingSupplier;
 import org.hyperic.sigar.Cpu;
 import org.hyperic.sigar.CpuInfo;
 import org.hyperic.sigar.Sigar;
@@ -298,73 +300,5 @@ public class SigarRegistrar {
                 base + "wait", "CPU Wait Time",
                 "The time the CPU had to wait for data to be loaded, in [ms]", "ms",
                 () -> provider.get().getWait()));
-    }
-
-    private interface ThrowingSupplier<T> {
-
-        T get() throws Throwable;
-    }
-
-    public static class Definition {
-        private final String name;
-        private final String displayName;
-        private final String description;
-        private final String unit;
-        private final DoubleSupplier evaluator;
-
-        private final int hash;
-
-        private Definition(final String name, final String displayName, final String description,
-                           final String unit, final ThrowingSupplier<Number> evaluator) {
-            this.name = name;
-            this.displayName = displayName;
-            this.description = description;
-            this.unit = unit;
-            this.evaluator = () -> {
-                try {
-                    return evaluator.get().doubleValue();
-                } catch (final Throwable throwable) {
-                    return -1;
-                }
-            };
-
-            this.hash = Objects.hash(name);
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-
-        public String getDescription() {
-            return description;
-        }
-
-        public String getUnit() {
-            return unit;
-        }
-
-        public DoubleSupplier getEvaluator() {
-            return evaluator;
-        }
-
-        @Override
-        public boolean equals(final Object that) {
-            if (this == that) {
-                return true;
-            }
-            if (that == null || getClass() != that.getClass()) {
-                return false;
-            }
-            return Objects.equals(name, Definition.class.cast(that).name);
-        }
-
-        @Override
-        public int hashCode() {
-            return hash;
-        }
     }
 }
