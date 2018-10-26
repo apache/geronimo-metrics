@@ -10,3 +10,23 @@
   <version>${metrics.version}</version>
 </parent>
 ----
+
+
+== Renaming Prometheus keys
+
+Prometheus exporter can rename metrics keys providing
+a properties file in the classpath as resource `META-INF/geronimo-metrics/prometheus-mapping.properties`
+or using system properties (with the prefix `geronimo.metrics.prometheus.mapping.`).
+
+The key is the metric key (with the registry type as prefix) and the value the replacement key:
+
+[source]
+----
+base\:my_metric = app:metric
+----
+
+TIP: since it is a properties format the `:` must be escaped.
+
+The specific key `geronimo.metrics.filter.prefix` can take
+a list (comma separated values) of metrics prefixes to filter (whitelist)
+exported metrics.

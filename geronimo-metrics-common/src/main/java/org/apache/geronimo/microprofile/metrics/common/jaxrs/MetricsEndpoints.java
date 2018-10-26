@@ -48,7 +48,7 @@ public class MetricsEndpoints {
     private MetricRegistry vendorRegistry;
     private MetricRegistry applicationRegistry;
 
-    private final PrometheusFormatter prometheus = new PrometheusFormatter();
+    private final PrometheusFormatter prometheus = new PrometheusFormatter().enableOverriding();
 
     public void setBaseRegistry(final MetricRegistry baseRegistry) {
         this.baseRegistry = baseRegistry;
