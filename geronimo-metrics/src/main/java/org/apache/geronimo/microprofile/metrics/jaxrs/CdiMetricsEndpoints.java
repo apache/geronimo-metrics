@@ -43,7 +43,7 @@ public class CdiMetricsEndpoints extends MetricsEndpoints {
     private MetricRegistry applicationRegistry;
 
     @PostConstruct
-    private void init() {
+    protected void init() {
         setApplicationRegistry(applicationRegistry);
         setBaseRegistry(baseRegistry);
         setVendorRegistry(vendorRegistry);

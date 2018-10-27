@@ -86,7 +86,7 @@ public class MetricsExtension implements Extension {
     private final Collection<CreationalContext<?>> creationalContexts = new ArrayList<>();
 
     void letOtherExtensionsUseRegistries(@Observes final ProcessAnnotatedType<CdiMetricsEndpoints> processAnnotatedType) {
-        if (!Boolean.getBoolean("geronimo.metrics.jaxrs.activated")) {
+        if ("false".equalsIgnoreCase(System.getProperty("geronimo.metrics.jaxrs.activated"))) { // default is secured so deploy
             processAnnotatedType.veto();
         }
     }

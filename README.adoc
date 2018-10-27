@@ -30,3 +30,33 @@ TIP: since it is a properties format the `:` must be escaped.
 The specific key `geronimo.metrics.filter.prefix` can take
 a list (comma separated values) of metrics prefixes to filter (whitelist)
 exported metrics.
+
+== Controlling the metrics endpoints exposure
+
+To activate the metrics endpoints you have to set the system property `geronimo.metrics.jaxrs.activated` to true
+or configure either a role or host supported for the endpoint.
+
+The role validation will use the JAX-RS `SecurityContext`.
+It relies on the system property `geronimo.metrics.jaxrs.acceptedRoles` and it takes a comma separated list of roles.
+At least one must match to let the request pass, if none is set this validation is ignored.
+Note that a request without a principal will lead to a HTTP 401 whereas a request with a principal but not the right role will issue a HTTP 403.
+
+The host validation will use the JAX-RS `UriInfo#getRequestUri`.
+It relies on the system property `geronimo.metrics.jaxrs.acceptedHosts` and it takes a comma separated list of roles.
+At least one must match to let the request pass, if none is set this validation is ignored.
+The `<local>` value is an alias for `127.x.y.z` or `1::x` IP or `localhost`.
+
+Configuration example:
+
+[source]
+----
+-Dgeronimo.metrics.jaxrs.acceptedRoles=ops \
+-Dgeronimo.metrics.jaxrs.acceptedHosts=my.remote.host
+----
+
+IMPORTANT: the default is `geronimo.metrics.jaxrs.acceptedHosts=<local>` but you can disable the endpoints using `geronimo.metrics.jaxrs.activated=false`.
+
+=== Security
+
+IMPORTANT: default will allow all local calls, this means that if you are behind a proxy which does not propagate the request URI properly
+your `/metrics` endpoints will be public.

@@ -34,4 +34,13 @@
   <properties>
     <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics.common</geronimo-metrics.Automatic-Module-Name>
   </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-frontend-jaxrs</artifactId>
+      <version>3.2.6</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 </project>

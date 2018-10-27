@@ -32,8 +32,11 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
+import javax.ws.rs.core.UriInfo;
 
 import org.apache.geronimo.microprofile.metrics.common.prometheus.PrometheusFormatter;
 import org.eclipse.microprofile.metrics.Counter;
@@ -48,7 +51,13 @@ public class MetricsEndpoints {
     private MetricRegistry vendorRegistry;
     private MetricRegistry applicationRegistry;
 
-    private final PrometheusFormatter prometheus = new PrometheusFormatter().enableOverriding();
+    private SecurityValidator securityValidator = new SecurityValidator() {
+        {
+            init();
+        }
+    };
+
+    private PrometheusFormatter prometheus = new PrometheusFormatter().enableOverriding();
 
     public void setBaseRegistry(final MetricRegistry baseRegistry) {
         this.baseRegistry = baseRegistry;
@@ -62,9 +71,19 @@ public class MetricsEndpoints {
         this.applicationRegistry = applicationRegistry;
     }
 
+    public void setSecurityValidator(final SecurityValidator securityValidator) {
+        this.securityValidator = securityValidator;
+    }
+
+    public void setPrometheus(final PrometheusFormatter prometheus) {
+        this.prometheus = prometheus;
+    }
+
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public Object getJson() {
+    public Object getJson(@Context final SecurityContext securityContext,
+                          @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         return Stream.of(MetricRegistry.Type.values())
                 .collect(toMap(MetricRegistry.Type::getName, it -> findRegistry(it.getName()).getMetrics().entrySet().stream()
                         .collect(toMap(Map.Entry::getKey, m -> map(m.getValue())))));
@@ -72,7 +91,9 @@ public class MetricsEndpoints {
 
     @GET
     @Produces(MediaType.TEXT_PLAIN)
-    public String getText() {
+    public String getText(@Context final SecurityContext securityContext,
+                          @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         return Stream.of(MetricRegistry.Type.values())
                 .map(type -> {
                     final MetricRegistry metricRegistry = findRegistry(type.getName());
@@ -85,7 +106,10 @@ public class MetricsEndpoints {
     @GET
     @Path("{registry}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Object getJson(@PathParam("registry") final String registry) {
+    public Object getJson(@PathParam("registry") final String registry,
+                          @Context final SecurityContext securityContext,
+                          @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         return findRegistry(registry).getMetrics().entrySet().stream()
                 .collect(toMap(Map.Entry::getKey, it -> map(it.getValue())));
     }
@@ -93,7 +117,10 @@ public class MetricsEndpoints {
     @GET
     @Path("{registry}")
     @Produces(MediaType.TEXT_PLAIN)
-    public String getText(@PathParam("registry") final String registry) {
+    public String getText(@PathParam("registry") final String registry,
+                          @Context final SecurityContext securityContext,
+                          @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         final MetricRegistry metricRegistry = findRegistry(registry);
         return prometheus.toText(metricRegistry, registry, metricRegistry.getMetrics()).toString();
     }
@@ -102,7 +129,10 @@ public class MetricsEndpoints {
     @Path("{registry}/{metric}")
     @Produces(MediaType.APPLICATION_JSON)
     public Object getJson(@PathParam("registry") final String registry,
-                          @PathParam("metric") final String name) {
+                          @PathParam("metric") final String name,
+                          @Context final SecurityContext securityContext,
+                          @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         return singleEntry(name, findRegistry(registry));
     }
 
@@ -110,7 +140,10 @@ public class MetricsEndpoints {
     @Path("{registry}/{metric}")
     @Produces(MediaType.TEXT_PLAIN)
     public String getText(@PathParam("registry") final String registry,
-                          @PathParam("metric") final String name) {
+                          @PathParam("metric") final String name,
+                          @Context final SecurityContext securityContext,
+                          @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         final MetricRegistry metricRegistry = findRegistry(registry);
         return prometheus.toText(
                 metricRegistry, registry,
@@ -122,7 +155,10 @@ public class MetricsEndpoints {
     @Path("{registry}/{metric}")
     @Produces(MediaType.APPLICATION_JSON)
     public Object getMetadata(@PathParam("registry") final String registry,
-                          @PathParam("metric") final String name) {
+                              @PathParam("metric") final String name,
+                              @Context final SecurityContext securityContext,
+                              @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         return ofNullable(findRegistry(registry).getMetadata().get(name))
                 .map(metric -> singletonMap(name, mapMeta(metric)))
                 .orElse(emptyMap());
@@ -131,7 +167,10 @@ public class MetricsEndpoints {
     @OPTIONS
     @Path("{registry}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Object getMetadata(@PathParam("registry") final String registry) {
+    public Object getMetadata(@PathParam("registry") final String registry,
+                              @Context final SecurityContext securityContext,
+                              @Context final UriInfo uriInfo) {
+        securityValidator.checkSecurity(securityContext, uriInfo);
         return findRegistry(registry).getMetadata().entrySet().stream()
                 .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue())));
     }
