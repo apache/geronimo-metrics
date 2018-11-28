@@ -133,7 +133,9 @@ public class MetricsEndpoints {
                           @Context final SecurityContext securityContext,
                           @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
-        return singleEntry(name, findRegistry(registry));
+        return ofNullable(findRegistry(registry).getMetrics().get(name))
+                .map(metric -> singletonMap(name, map(metric)))
+                .orElseGet(Collections::emptyMap);
     }
 
     @GET
