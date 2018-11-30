@@ -19,11 +19,13 @@ package org.apache.geronimo.microprofile.metrics.common.jaxrs;
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
 import static java.util.Optional.ofNullable;
+import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toMap;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import javax.ws.rs.GET;
@@ -133,9 +135,7 @@ public class MetricsEndpoints {
                           @Context final SecurityContext securityContext,
                           @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
-        return ofNullable(findRegistry(registry).getMetrics().get(name))
-                .map(metric -> singletonMap(name, map(metric)))
-                .orElseGet(Collections::emptyMap);
+        return singleEntry(name, findRegistry(registry), this::map);
     }
 
     @GET
@@ -149,8 +149,7 @@ public class MetricsEndpoints {
         final MetricRegistry metricRegistry = findRegistry(registry);
         return prometheus.toText(
                 metricRegistry, registry,
-                singleEntry(name, metricRegistry))
-                .toString();
+                singleEntry(name, metricRegistry, identity())).toString();
     }
 
     @OPTIONS
@@ -177,9 +176,10 @@ public class MetricsEndpoints {
                 .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue())));
     }
 
-    private Map<String, Metric> singleEntry(final String name, final MetricRegistry metricRegistry) {
+    private <T> Map<String, T> singleEntry(final String name, final MetricRegistry metricRegistry,
+                                           final Function<Metric, T> metricMapper) {
         return ofNullable(metricRegistry.getMetrics().get(name))
-                .map(metric -> singletonMap(name, metric))
+                .map(metric -> singletonMap(name, metricMapper.apply(metric)))
                 .orElseGet(Collections::emptyMap);
     }
 
