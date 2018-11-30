@@ -51,7 +51,6 @@
     <module>geronimo-metrics-common</module>
     <module>geronimo-metrics</module>
     <module>geronimo-metrics-extensions</module>
-    <module>geronimo-metrics-tests</module>
   </modules>
 
   <dependencies>
