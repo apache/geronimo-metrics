@@ -19,14 +19,12 @@ package org.apache.geronimo.microprofile.metrics.extension.sigar;
 import static java.util.stream.Collectors.toList;
 import static org.hyperic.sigar.SigarProxyCache.EXPIRE_DEFAULT;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.DoubleSupplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -34,6 +32,7 @@ import org.apache.geronimo.microprofile.metrics.extension.common.Definition;
 import org.apache.geronimo.microprofile.metrics.extension.common.ThrowingSupplier;
 import org.hyperic.sigar.Cpu;
 import org.hyperic.sigar.CpuInfo;
+import org.hyperic.sigar.FileSystem;
 import org.hyperic.sigar.Sigar;
 import org.hyperic.sigar.SigarException;
 import org.hyperic.sigar.SigarProxy;
@@ -90,7 +89,7 @@ public class SigarRegistrar {
         final Collection<Definition> alreadyRegistered = currentMetrics.stream()
                 .filter(it -> currentDefinitions.containsKey(it.getName()))
                 .collect(toList());
-        final Collection<Definition> missingRegistered = new ArrayList<>(currentDefinitions.values());
+        final Collection<Definition> missingRegistered = new HashSet<>(currentDefinitions.values());
         missingRegistered.removeAll(alreadyRegistered);
 
         // remove no more accurate metrics
@@ -126,7 +125,7 @@ public class SigarRegistrar {
     }
 
     private Collection<Definition> collectMetrics() {
-        final Collection<Definition> definitions = new ArrayList<>();
+        final Collection<Definition> definitions = new HashSet<>();
         
         // global
         addCpu(definitions, "sigar.cpu.", () -> sigar.getCpu());
@@ -158,8 +157,9 @@ public class SigarRegistrar {
                             !it.getDirName().startsWith("/proc") &&
                             !it.getDirName().startsWith("/run") &&
                             !it.getDirName().startsWith("/snap"))
-                  .forEach(fs -> {
-                final String devName = fs.getDevName();
+                  .map(FileSystem::getDevName)
+                  .distinct()
+                  .forEach(devName -> {
                 final String baseName = "sigar.net.disk." + devName.replace('/', '_').replaceFirst("^_", "") + ".";
                 definitions.add(new Definition(
                         baseName + "read.count", devName + " Reads",
