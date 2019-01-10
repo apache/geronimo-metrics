@@ -19,6 +19,7 @@ package org.apache.geronimo.microprofile.metrics.extension.common;
 import static org.eclipse.microprofile.metrics.MetricType.GAUGE;
 
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Metadata;
@@ -36,8 +37,12 @@ public class MicroprofileMetricsAdapter {
             final Metadata metadata = new Metadata(def.getName(), def.getDisplayName(), def.getDescription(), GAUGE,
                     def.getUnit());
             metadata.setReusable(true);
-            registry.register(metadata,
-                    (Gauge<Double>) () -> def.getEvaluator().getAsDouble());
+            try {
+                registry.register(metadata, (Gauge<Double>) () -> def.getEvaluator()
+                                                                     .getAsDouble());
+            } catch (final RuntimeException re) {
+                Logger.getLogger(MicroprofileMetricsAdapter.class.getName()).fine(re.getMessage());
+            }
         };
     }
 
