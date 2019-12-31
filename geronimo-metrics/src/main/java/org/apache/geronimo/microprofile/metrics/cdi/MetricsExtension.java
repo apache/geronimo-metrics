@@ -72,6 +72,7 @@ import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricType;
 import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
+import org.eclipse.microprofile.metrics.annotation.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.annotation.Counted;
 import org.eclipse.microprofile.metrics.annotation.Metered;
 import org.eclipse.microprofile.metrics.annotation.RegistryType;
@@ -91,6 +92,11 @@ public class MetricsExtension implements Extension {
         if ("false".equalsIgnoreCase(System.getProperty("geronimo.metrics.jaxrs.activated"))) { // default is secured so deploy
             processAnnotatedType.veto();
         }
+    }
+
+    // can happen in shades
+    void vetoDefaultRegistry(@Observes final ProcessAnnotatedType<RegistryImpl> processAnnotatedType) {
+        processAnnotatedType.veto();
     }
 
     void letOtherExtensionsUseRegistries(@Observes final BeforeBeanDiscovery beforeBeanDiscovery, final BeanManager beanManager) {
@@ -197,6 +203,7 @@ public class MetricsExtension implements Extension {
     void findInterceptorMetrics(@Observes @WithAnnotations({
             Counted.class,
             Timed.class,
+            ConcurrentGauge.class,
             org.eclipse.microprofile.metrics.annotation.Metered.class,
             org.eclipse.microprofile.metrics.annotation.Gauge.class
     }) final ProcessAnnotatedType<?> pat) {
@@ -229,6 +236,23 @@ public class MetricsExtension implements Extension {
                             .build();
                         final MetricID metricID = new MetricID(name, createTags(counted.tags()));
                         addRegistration(method, metricID, metadata, counted.reusable() || !isMethod, counted.tags());
+                    }
+
+                    final ConcurrentGauge concurrentGauge = ofNullable(method.getAnnotation(ConcurrentGauge.class)).orElseGet(() ->
+                            annotatedType.getAnnotation(ConcurrentGauge.class));
+                    if (concurrentGauge != null) {
+                        final boolean isMethod = method.isAnnotationPresent(ConcurrentGauge.class);
+                        final String name = Names.findName(javaClass, javaMember, isMethod ? concurrentGauge.name() : "", concurrentGauge.absolute(),
+                                ofNullable(annotatedType.getAnnotation(ConcurrentGauge.class)).map(ConcurrentGauge::name).orElse(""));
+                        final Metadata metadata = Metadata.builder()
+                            .withName(name)
+                            .withDisplayName(concurrentGauge.displayName())
+                            .withDescription(concurrentGauge.description())
+                            .withType(MetricType.CONCURRENT_GAUGE)
+                            .withUnit(concurrentGauge.unit())
+                            .build();
+                        final MetricID metricID = new MetricID(name, createTags(concurrentGauge.tags()));
+                        addRegistration(method, metricID, metadata, concurrentGauge.reusable() || !isMethod, concurrentGauge.tags());
                     }
 
                     final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> annotatedType.getAnnotation(Timed.class));
@@ -314,16 +338,24 @@ public class MetricsExtension implements Extension {
                     });
                     break;
                 case TIMER:
-                    addBean(afterBeanDiscovery, name.getName(), Timer.class, new MetricImpl(registration, name), applicationRegistry.timer(registration));
+                    addBean(afterBeanDiscovery, name.getName(), Timer.class, new MetricImpl(registration, name),
+                            applicationRegistry.timer(registration, tags(name.getTags())));
                     break;
                 case COUNTER:
-                    addBean(afterBeanDiscovery, name.getName(), Counter.class, new MetricImpl(registration, name), applicationRegistry.counter(registration));
+                    addBean(afterBeanDiscovery, name.getName(), Counter.class, new MetricImpl(registration, name),
+                            applicationRegistry.counter(registration, tags(name.getTags())));
+                    break;
+                case CONCURRENT_GAUGE:
+                    addBean(afterBeanDiscovery, name.getName(), org.eclipse.microprofile.metrics.ConcurrentGauge.class, new MetricImpl(registration, name),
+                            applicationRegistry.concurrentGauge(registration, tags(name.getTags())));
                     break;
                 case METERED:
-                    addBean(afterBeanDiscovery, name.getName(), Meter.class, new MetricImpl(registration, name), applicationRegistry.meter(registration));
+                    addBean(afterBeanDiscovery, name.getName(), Meter.class, new MetricImpl(registration, name),
+                            applicationRegistry.meter(registration, tags(name.getTags())));
                     break;
                 case HISTOGRAM:
-                    addBean(afterBeanDiscovery, name.getName(), Histogram.class, new MetricImpl(registration, name), applicationRegistry.histogram(registration));
+                    addBean(afterBeanDiscovery, name.getName(), Histogram.class, new MetricImpl(registration, name),
+                            applicationRegistry.histogram(registration, tags(name.getTags())));
                     break;
                 default:
             }
@@ -353,6 +385,11 @@ public class MetricsExtension implements Extension {
 
     void beforeShutdown(@Observes final BeforeShutdown beforeShutdown) {
         creationalContexts.forEach(CreationalContext::release);
+    }
+
+
+    private Tag[] tags(final Map<String, String> tags) {
+        return tags.entrySet().stream().map(e -> new Tag(e.getKey(), e.getValue())).toArray(Tag[]::new);
     }
 
     private void registerProducer(final BeanManager beanManager, final org.eclipse.microprofile.metrics.annotation.Metric config,

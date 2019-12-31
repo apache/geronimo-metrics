@@ -39,11 +39,10 @@ import javax.interceptor.InvocationContext;
 import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
-import org.eclipse.microprofile.metrics.annotation.Counted;
 
-@Counted
 @Interceptor
 @Priority(Interceptor.Priority.LIBRARY_BEFORE)
+@org.eclipse.microprofile.metrics.annotation.ConcurrentGauge
 public class ConcurrentGaugeInterceptor implements Serializable {
     @Inject
     private MetricRegistry registry;
@@ -107,7 +106,7 @@ public class ConcurrentGaugeInterceptor implements Serializable {
             if (counter == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }
-            meta = new Meta(counter, ofNullable(counted)
+            meta = new Meta(counter, !ofNullable(counted)
                     .orElseGet(() -> type.getAnnotation(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class)).absolute());
             gauges.putIfAbsent(executable, meta);
         }

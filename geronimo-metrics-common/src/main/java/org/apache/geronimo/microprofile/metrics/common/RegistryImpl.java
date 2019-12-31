@@ -87,7 +87,7 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Counter counter(final Metadata metadata, final Tag... tags) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        Holder<? extends Metric> holder = metrics.get(new MetricID(metadata.getName(), tags));
         if (holder == null) {
             holder = new Holder<>(new CounterImpl(metadata.getUnit().orElse("")), metadata);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(new MetricID(metadata.getName(), tags), holder);
@@ -122,9 +122,9 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public ConcurrentGauge concurrentGauge(final Metadata metadata, final Tag... tags) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        Holder<? extends Metric> holder = metrics.get(new MetricID(metadata.getName(), tags));
         if (holder == null) {
-            holder = new Holder<>(new CounterImpl(metadata.getUnit().orElse("")), metadata);
+            holder = new Holder<>(new ConcurrentGaugeImpl(metadata.getUnit().orElse("")), metadata);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(new MetricID(metadata.getName(), tags), holder);
             if (existing != null) {
                 holder = existing;
@@ -148,7 +148,7 @@ public class RegistryImpl extends MetricRegistry {
     @Override
     public Histogram histogram(final Metadata metadata, final Tag... tags) {
 
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        Holder<? extends Metric> holder = metrics.get(new MetricID(metadata.getName(), tags));
         if (holder == null) {
             holder = new Holder<>(new HistogramImpl(metadata.getUnit().orElse("")), metadata);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(new MetricID(metadata.getName(), tags), holder);
@@ -173,7 +173,7 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Meter meter(final Metadata metadata, final Tag... tags) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        Holder<? extends Metric> holder = metrics.get(new MetricID(metadata.getName(), tags));
         if (holder == null) {
             holder = new Holder<>(new MeterImpl(metadata.getUnit().orElse("")), metadata);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(new MetricID(metadata.getName(), tags), holder);
@@ -198,7 +198,7 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Timer timer(final Metadata metadata, final Tag... tags) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        Holder<? extends Metric> holder = metrics.get(new MetricID(metadata.getName(), tags));
         if (holder == null) {
             holder = new Holder<>(new TimerImpl(metadata.getUnit().orElse("")), metadata);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(new MetricID(metadata.getName(), tags), holder);

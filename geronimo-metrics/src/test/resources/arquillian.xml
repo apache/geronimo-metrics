@@ -34,7 +34,8 @@
         rest-assured,
         httpmime,
         xml-path,
-        org.apache.sling.javax.activation
+        org.apache.sling.javax.activation,
+        jacorb
       </property>
     </configuration>
   </container>
