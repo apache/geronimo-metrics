@@ -37,7 +37,9 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.eclipse.microprofile.metrics.Counter;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.annotation.Counted;
 
 @Counted
@@ -53,6 +55,9 @@ public class CountedInterceptor implements Serializable {
 
     @Inject
     private BeanManager beanManager;
+
+    @Inject
+    private MetricsExtension extension;
 
     private transient volatile ConcurrentMap<Executable, Meta> counters = new ConcurrentHashMap<>();
 
@@ -94,7 +99,8 @@ public class CountedInterceptor implements Serializable {
                     counted != null && counted.absolute(),
                     ofNullable(type.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
 
-            final Counter counter = Counter.class.cast(registry.getMetrics().get(name));
+            final Counter counter = Counter.class.cast(registry.getMetrics().get(
+                    new MetricID(name, counted == null ? new Tag[0] : extension.createTags(counted.tags()))));
             if (counter == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }

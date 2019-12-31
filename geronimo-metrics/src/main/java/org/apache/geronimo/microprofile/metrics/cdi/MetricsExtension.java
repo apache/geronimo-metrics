@@ -193,7 +193,7 @@ public class MetricsExtension implements Extension {
         }
     }
 
-    private Tag[] createTags(final String[] tags) {
+    public Tag[] createTags(final String[] tags) {
         return Stream.of(tags).filter(it -> it.contains("=")).map(it -> {
             final int sep = it.indexOf("=");
             return new Tag(it.substring(0, sep), it.substring(sep + 1));
