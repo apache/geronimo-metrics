@@ -299,7 +299,7 @@ public class MetricsExtension implements Extension {
                                 .withName(name)
                                 .withDisplayName(gauge.displayName())
                                 .withDescription(gauge.description())
-                                .withType(MetricType.METERED)
+                                .withType(MetricType.GAUGE)
                                 .withUnit(gauge.unit())
                                 .build();
                         final MetricID metricID = new MetricID(name, createTags(gauge.tags()));
