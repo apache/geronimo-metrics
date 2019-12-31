@@ -45,6 +45,7 @@ import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Metadata;
 import org.eclipse.microprofile.metrics.Metric;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 
 @Path("metrics")
@@ -99,7 +100,7 @@ public class MetricsEndpoints {
         return Stream.of(MetricRegistry.Type.values())
                 .map(type -> {
                     final MetricRegistry metricRegistry = findRegistry(type.getName());
-                    return prometheus.toText(metricRegistry, type.getName(), metricRegistry.getMetrics());
+                    return prometheus.toText(metricRegistry, type.getName(), metrics(metricRegistry));
                 })
                 .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
                 .toString();
@@ -124,7 +125,7 @@ public class MetricsEndpoints {
                           @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
         final MetricRegistry metricRegistry = findRegistry(registry);
-        return prometheus.toText(metricRegistry, registry, metricRegistry.getMetrics()).toString();
+        return prometheus.toText(metricRegistry, registry, metrics(metricRegistry)).toString();
     }
 
     @GET
@@ -161,7 +162,7 @@ public class MetricsEndpoints {
                               @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return ofNullable(findRegistry(registry).getMetadata().get(name))
-                .map(metric -> singletonMap(name, mapMeta(metric)))
+                .map(metric -> singletonMap(name, mapMeta(metric, new MetricID(name))))
                 .orElse(emptyMap());
     }
 
@@ -173,18 +174,23 @@ public class MetricsEndpoints {
                               @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return findRegistry(registry).getMetadata().entrySet().stream()
-                .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue())));
+                .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue(), new MetricID(e.getKey()))));
     }
 
-    private <T> Map<String, T> singleEntry(final String name, final MetricRegistry metricRegistry,
+    private Map<String, Metric> metrics(final MetricRegistry metricRegistry) {
+        return metricRegistry.getMetrics().entrySet().stream()
+                .collect(toMap(e -> e.getKey().getName(), Map.Entry::getValue));
+    }
+
+    private <T> Map<String, T> singleEntry(final String id, final MetricRegistry metricRegistry,
                                            final Function<Metric, T> metricMapper) {
-        return ofNullable(metricRegistry.getMetrics().get(name))
-                .map(metric -> singletonMap(name, metricMapper.apply(metric)))
+        return ofNullable(metricRegistry.getMetrics().get(new MetricID(id)))
+                .map(metric -> singletonMap(id, metricMapper.apply(metric)))
                 .orElseGet(Collections::emptyMap);
     }
 
-    private Meta mapMeta(final Metadata value) {
-        return ofNullable(value).map(Meta::new).orElse(null);
+    private Meta mapMeta(final Metadata value, final MetricID metricID) {
+        return ofNullable(value).map(v -> new Meta(value, metricID)).orElse(null);
     }
 
     private Object map(final Metric metric) {
@@ -211,9 +217,11 @@ public class MetricsEndpoints {
 
     public static class Meta {
         private final Metadata value;
+        private final MetricID metricID;
 
-        private Meta(final Metadata value) {
+        private Meta(final Metadata value, final MetricID metricID) {
             this.value = value;
+            this.metricID = metricID;
         }
 
         public String getName() {
@@ -225,7 +233,7 @@ public class MetricsEndpoints {
         }
 
         public String getDescription() {
-            return value.getDescription();
+            return value.getDescription().orElse(null);
         }
 
         public String getType() {
@@ -237,7 +245,7 @@ public class MetricsEndpoints {
         }
 
         public String getUnit() {
-            return value.getUnit();
+            return value.getUnit().orElse(null);
         }
 
         public boolean isReusable() {
@@ -245,7 +253,7 @@ public class MetricsEndpoints {
         }
 
         public String getTags() { // not sure why tck expect it, sounds worse than native getTags for clients
-            return value.getTags().entrySet().stream().map(e -> e.getKey() + '=' + e.getValue()).collect(joining(","));
+            return metricID.getTags().entrySet().stream().map(e -> e.getKey() + '=' + e.getValue()).collect(joining(","));
         }
     }
 }

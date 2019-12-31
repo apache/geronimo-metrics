@@ -36,14 +36,15 @@ import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
-import org.eclipse.microprofile.metrics.Counter;
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.annotation.Counted;
 
 @Counted
 @Interceptor
 @Priority(Interceptor.Priority.LIBRARY_BEFORE)
-public class CountedInterceptor implements Serializable {
+public class ConcurrentGaugeInterceptor implements Serializable {
     @Inject
     private MetricRegistry registry;
 
@@ -54,7 +55,7 @@ public class CountedInterceptor implements Serializable {
     @Inject
     private BeanManager beanManager;
 
-    private transient volatile ConcurrentMap<Executable, Meta> counters = new ConcurrentHashMap<>();
+    private transient volatile ConcurrentMap<Executable, Meta> gauges = new ConcurrentHashMap<>();
 
     @AroundConstruct
     public Object onConstructor(final InvocationContext context) throws Exception {
@@ -67,48 +68,59 @@ public class CountedInterceptor implements Serializable {
     }
 
     private Object invoke(final InvocationContext context, final Executable executable) throws Exception {
-        final Meta counter = findCounter(executable);
-        counter.counter.inc();
-        return context.proceed();
+        final Meta counter = find(executable);
+        counter.gauge.inc();
+        try {
+            return context.proceed();
+        } finally {
+            if (!counter.skipDecrement) {
+                counter.gauge.dec();
+            }
+        }
     }
 
-    private Meta findCounter(final Executable executable) {
-        if (counters == null) {
+    private Meta find(final Executable executable) {
+        if (gauges == null) {
             synchronized (this) {
-                if (counters == null) {
-                    counters = new ConcurrentHashMap<>();
+                if (gauges == null) {
+                    gauges = new ConcurrentHashMap<>();
                 }
             }
         }
-        Meta meta = counters.get(executable);
+        Meta meta = gauges.get(executable);
         if (meta == null) {
             final AnnotatedType<?> type = beanManager.createAnnotatedType(bean.getBeanClass());
-            final Counted counted = Stream.concat(type.getMethods().stream(), type.getConstructors().stream())
+            final org.eclipse.microprofile.metrics.annotation.ConcurrentGauge counted = Stream.concat(type.getMethods().stream(), type.getConstructors().stream())
                     .filter(it -> it.getJavaMember().equals(executable))
                     .findFirst()
-                    .map(m -> m.getAnnotation(Counted.class))
+                    .map(m -> m.getAnnotation(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class))
                     .orElse(null);
             final String name = Names.findName(
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, counted == null ? null : counted.name(),
                     counted != null && counted.absolute(),
-                    ofNullable(type.getAnnotation(Counted.class)).map(Counted::name).orElse(""));
+                    ofNullable(type.getAnnotation(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class))
+                            .map(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge::name)
+                            .orElse(""));
 
-            final Counter counter = Counter.class.cast(registry.getMetrics().get(name));
+            final ConcurrentGauge counter = ConcurrentGauge.class.cast(registry.getMetrics().get(new MetricID(name)));
             if (counter == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }
-            meta = new Meta(counter);
-            counters.putIfAbsent(executable, meta);
+            meta = new Meta(counter, ofNullable(counted)
+                    .orElseGet(() -> type.getAnnotation(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class)).absolute());
+            gauges.putIfAbsent(executable, meta);
         }
         return meta;
     }
 
     private static final class Meta {
-        private final Counter counter;
+        private final ConcurrentGauge gauge;
+        private final boolean skipDecrement;
 
-        private Meta(final Counter counter) {
-            this.counter = counter;
+        private Meta(final ConcurrentGauge gauge, final boolean skipDecrement) {
+            this.gauge = gauge;
+            this.skipDecrement = skipDecrement;
         }
     }
 }

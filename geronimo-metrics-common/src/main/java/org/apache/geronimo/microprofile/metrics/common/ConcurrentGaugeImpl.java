@@ -16,30 +16,50 @@
  */
 package org.apache.geronimo.microprofile.metrics.common;
 
-import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.atomic.AtomicLong;
 
-import org.eclipse.microprofile.metrics.Counter;
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
 
-public class CounterImpl implements Counter {
-    private final LongAdder delegate = new LongAdder();
+public class ConcurrentGaugeImpl implements ConcurrentGauge {
+    private final AtomicLong delegate = new AtomicLong();
+    private final AtomicLong min = new AtomicLong();
+    private final AtomicLong max = new AtomicLong();
     private final String unit;
 
-    public CounterImpl(final String unit) {
+    public ConcurrentGaugeImpl(final String unit) {
         this.unit = unit;
     }
 
     @Override
     public void inc() {
-        delegate.increment();
+        final long value = delegate.incrementAndGet();
+        final long max = this.max.get();
+        if (max < value) {
+            this.max.compareAndSet(max, value);
+        }
     }
 
     @Override
-    public void inc(final long n) {
-        delegate.add(n);
+    public void dec() {
+        final long value = delegate.decrementAndGet();
+        final long min = this.min.get();
+        if (min < value) {
+            this.min.compareAndSet(min, value);
+        }
     }
 
     @Override
     public long getCount() {
-        return delegate.sum();
+        return delegate.get();
+    }
+
+    @Override
+    public long getMax() {
+        return max.get();
+    }
+
+    @Override
+    public long getMin() {
+        return min.get();
     }
 }

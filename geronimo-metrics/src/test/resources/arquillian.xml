@@ -33,7 +33,8 @@
         tagsoup,
         rest-assured,
         httpmime,
-        xml-path
+        xml-path,
+        org.apache.sling.javax.activation
       </property>
     </configuration>
   </container>

@@ -17,7 +17,6 @@
 package org.apache.geronimo.microprofile.metrics.common.prometheus;
 
 import static java.lang.Math.pow;
-import static java.util.Collections.singletonMap;
 import static java.util.Locale.ROOT;
 import static java.util.Optional.of;
 import static java.util.stream.Collectors.joining;
@@ -39,9 +38,11 @@ import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Metadata;
 import org.eclipse.microprofile.metrics.Meter;
 import org.eclipse.microprofile.metrics.Metric;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricUnits;
 import org.eclipse.microprofile.metrics.Snapshot;
+import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
 
 // this is so weird to have this format built-in but not mainstream ones,
@@ -98,8 +99,10 @@ public class PrometheusFormatter {
                 .map(it -> new Entry(metadatas.get(it.getKey()), registryKey + ':' + toPrometheusKey(metadatas.get(it.getKey())), it.getValue()))
                 .filter(it -> prefixFilter == null || prefixFilter.test(it.prometheusKey))
                 .map(entry -> {
+
                     switch (entry.metadata.getTypeRaw()) {
-                        case COUNTER: {
+                        case COUNTER:
+                        case CONCURRENT_GAUGE: {
                             final String key = toPrometheusKey(entry.metadata);
                             return new StringBuilder()
                                     .append(value(registryKey, key, Counter.class.cast(entry.metric).getCount(), entry.metadata));
@@ -152,23 +155,28 @@ public class PrometheusFormatter {
                 .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append);
     }
 
-    private StringBuilder toPrometheus(final String registryKey, final String keyBase, final String keyUnit, final Snapshot snapshot, final Metadata metadata) {
-        final Function<Map<String, String>, Metadata> metaFactory = tag -> new Metadata(metadata.getName(), metadata.getDisplayName(), metadata.getDescription(), metadata.getTypeRaw(), metadata.getUnit(),
-                Stream.concat(metadata.getTags().entrySet().stream(), tag.entrySet().stream())
-                        .map(e -> e.getKey() + '=' + e.getValue())
-                        .collect(joining(",")));
+    private StringBuilder toPrometheus(final String registryKey, final String keyBase, final String keyUnit,
+                                       final Snapshot snapshot, final Metadata metadata, final Tag... tags) {
+        final Function<Stream<Tag>, Tag[]> metaFactory = newTags ->
+                Stream.concat(newTags, Stream.of(tags)).toArray(Tag[]::new);
         final String completeKey = keyBase + keyUnit;
         return new StringBuilder()
                 .append(value(registryKey, keyBase + "_min" + keyUnit, snapshot.getMin(), metadata))
                 .append(value(registryKey, keyBase + "_max" + keyUnit, snapshot.getMax(), metadata))
                 .append(value(registryKey, keyBase + "_mean" + keyUnit, snapshot.getMean(), metadata))
                 .append(value(registryKey, keyBase + "_stddev" + keyUnit, snapshot.getStdDev(), metadata))
-                .append(value(registryKey, completeKey, snapshot.getMedian(), metaFactory.apply(singletonMap("quantile", "0.5"))))
-                .append(value(registryKey, completeKey, snapshot.get75thPercentile(), metaFactory.apply(singletonMap("quantile", "0.75"))))
-                .append(value(registryKey, completeKey, snapshot.get95thPercentile(), metaFactory.apply(singletonMap("quantile", "0.95"))))
-                .append(value(registryKey, completeKey, snapshot.get98thPercentile(), metaFactory.apply(singletonMap("quantile", "0.98"))))
-                .append(value(registryKey, completeKey, snapshot.get99thPercentile(), metaFactory.apply(singletonMap("quantile", "0.99"))))
-                .append(value(registryKey, completeKey, snapshot.get999thPercentile(), metaFactory.apply(singletonMap("quantile", "0.999"))));
+                .append(value(registryKey, completeKey, snapshot.getMedian(), metadata,
+                        metaFactory.apply(Stream.of(new Tag("quantile", "0.5")))))
+                .append(value(registryKey, completeKey, snapshot.get75thPercentile(), metadata,
+                        metaFactory.apply(Stream.of(new Tag("quantile", "0.75")))))
+                .append(value(registryKey, completeKey, snapshot.get95thPercentile(), metadata,
+                        metaFactory.apply(Stream.of(new Tag("quantile", "0.95")))))
+                .append(value(registryKey, completeKey, snapshot.get98thPercentile(), metadata,
+                        metaFactory.apply(Stream.of(new Tag("quantile", "0.98")))))
+                .append(value(registryKey, completeKey, snapshot.get99thPercentile(), metadata,
+                        metaFactory.apply(Stream.of(new Tag("quantile", "0.99")))))
+                .append(value(registryKey, completeKey, snapshot.get999thPercentile(), metadata,
+                        metaFactory.apply(Stream.of(new Tag("quantile", "0.999")))));
     }
 
     private String toPrometheusKey(final Metadata metadata) {
@@ -176,23 +184,23 @@ public class PrometheusFormatter {
     }
 
     private String toUnitSuffix(final Metadata metadata) {
-        return metadata.getUnit().equalsIgnoreCase("none") ?
-                "" : ("_" + toPrometheusUnit(metadata.getUnit()));
+        return metadata.getUnit().orElse("").equalsIgnoreCase("none") ?
+                "" : ("_" + toPrometheusUnit(metadata.getUnit().orElse("")));
     }
 
     private StringBuilder value(final String registryKey, final String key, final double value,
-                                final Metadata metadata) {
+                                final Metadata metadata, final Tag... tags) {
         final String builtKey = registryKey + ':' + key;
         return new StringBuilder()
                 .append(type(registryKey, key, metadata))
                 .append(keyMapping.getOrDefault(builtKey, builtKey))
-                .append(of(metadata.getTags())
-                        .filter(t -> !t.isEmpty())
-                        .map(t -> t.entrySet().stream()
-                                .map(e -> e.getKey() + "=\"" + e.getValue() + "\"")
+                .append(of(tags)
+                        .filter(t -> t.length > 0)
+                        .map(t -> Stream.of(tags)
+                                .map(e -> e.getTagName() + "=\"" + e.getTagValue() + "\"")
                                 .collect(joining(",", "{", "}")))
                         .orElse(""))
-                .append(' ').append(toPrometheusValue(metadata.getUnit(), value)).append("\n");
+                .append(' ').append(toPrometheusValue(metadata.getUnit().orElse(""), value)).append("\n");
     }
 
     private StringBuilder type(final String registryKey, final String key, final Metadata metadata) {
