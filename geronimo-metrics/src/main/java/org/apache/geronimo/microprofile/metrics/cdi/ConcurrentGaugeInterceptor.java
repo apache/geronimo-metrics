@@ -76,9 +76,7 @@ public class ConcurrentGaugeInterceptor implements Serializable {
         try {
             return context.proceed();
         } finally {
-            if (!counter.skipDecrement) {
-                counter.gauge.dec();
-            }
+            counter.gauge.dec();
         }
     }
 
@@ -106,13 +104,12 @@ public class ConcurrentGaugeInterceptor implements Serializable {
                             .map(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge::name)
                             .orElse(""));
 
-            final ConcurrentGauge counter = ConcurrentGauge.class.cast(registry.getMetrics().get(
+            final ConcurrentGauge gauge = ConcurrentGauge.class.cast(registry.getMetrics().get(
                     new MetricID(name, concurrentGauge == null ? new Tag[0] : extension.createTags(concurrentGauge.tags()))));
-            if (counter == null) {
+            if (gauge == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }
-            meta = new Meta(counter, !ofNullable(concurrentGauge)
-                    .orElseGet(() -> type.getAnnotation(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class)).absolute());
+            meta = new Meta(gauge);
             gauges.putIfAbsent(executable, meta);
         }
         return meta;
@@ -120,11 +117,9 @@ public class ConcurrentGaugeInterceptor implements Serializable {
 
     private static final class Meta {
         private final ConcurrentGauge gauge;
-        private final boolean skipDecrement;
 
-        private Meta(final ConcurrentGauge gauge, final boolean skipDecrement) {
+        private Meta(final ConcurrentGauge gauge) {
             this.gauge = gauge;
-            this.skipDecrement = skipDecrement;
         }
     }
 }
