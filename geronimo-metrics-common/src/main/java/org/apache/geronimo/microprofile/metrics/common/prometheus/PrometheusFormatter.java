@@ -99,7 +99,6 @@ public class PrometheusFormatter {
                 .map(it -> new Entry(metadatas.get(it.getKey()), registryKey + ':' + toPrometheusKey(metadatas.get(it.getKey())), it.getValue()))
                 .filter(it -> prefixFilter == null || prefixFilter.test(it.prometheusKey))
                 .map(entry -> {
-
                     switch (entry.metadata.getTypeRaw()) {
                         case COUNTER:
                         case CONCURRENT_GAUGE: {

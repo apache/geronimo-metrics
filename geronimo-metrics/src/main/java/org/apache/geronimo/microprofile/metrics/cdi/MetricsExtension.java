@@ -151,7 +151,8 @@ public class MetricsExtension implements Extension {
         }
 
         final Annotated annotated = injectionPoint.getAnnotated();
-        final org.eclipse.microprofile.metrics.annotation.Metric config = annotated.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metric.class);
+        final org.eclipse.microprofile.metrics.annotation.Metric config = annotated.getAnnotation(
+                org.eclipse.microprofile.metrics.annotation.Metric.class);
 
         final MetricType type = findType(clazz);
         if (config != null) {
@@ -432,6 +433,8 @@ public class MetricsExtension implements Extension {
             type = MetricType.TIMER;
         } else if (Histogram.class.isAssignableFrom(clazz)) {
             type = MetricType.HISTOGRAM;
+        } else if (org.eclipse.microprofile.metrics.ConcurrentGauge.class.isAssignableFrom(clazz)) {
+            type = MetricType.CONCURRENT_GAUGE;
         } else {
             type = MetricType.INVALID;
         }
