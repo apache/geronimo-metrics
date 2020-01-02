@@ -24,6 +24,7 @@ import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toMap;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -41,12 +42,18 @@ import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriInfo;
 
 import org.apache.geronimo.microprofile.metrics.common.prometheus.PrometheusFormatter;
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
+import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Metadata;
+import org.eclipse.microprofile.metrics.Meter;
+import org.eclipse.microprofile.metrics.Metered;
 import org.eclipse.microprofile.metrics.Metric;
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.Snapshot;
+import org.eclipse.microprofile.metrics.Timer;
 
 @Path("metrics")
 public class MetricsEndpoints {
@@ -89,7 +96,7 @@ public class MetricsEndpoints {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return Stream.of(MetricRegistry.Type.values())
                 .collect(toMap(MetricRegistry.Type::getName, it -> findRegistry(it.getName()).getMetrics().entrySet().stream()
-                        .collect(toMap(Map.Entry::getKey, m -> map(m.getValue())))));
+                        .collect(toMap(this::getKey, m -> toJson(map(m.getValue()), formatTags(m.getKey())), (a, b) -> a))));
     }
 
     @GET
@@ -114,7 +121,7 @@ public class MetricsEndpoints {
                           @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return findRegistry(registry).getMetrics().entrySet().stream()
-                .collect(toMap(Map.Entry::getKey, it -> map(it.getValue())));
+                .collect(toMap(this::getKey, it -> toJson(map(it.getValue()), formatTags(it.getKey())), (a, b) -> a));
     }
 
     @GET
@@ -174,12 +181,12 @@ public class MetricsEndpoints {
                               @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return findRegistry(registry).getMetadata().entrySet().stream()
-                .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue(), new MetricID(e.getKey()))));
+                .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue(), new MetricID(e.getKey())), (a, b) -> a));
     }
 
     private Map<String, Metric> metrics(final MetricRegistry metricRegistry) {
         return metricRegistry.getMetrics().entrySet().stream()
-                .collect(toMap(e -> e.getKey().getName(), Map.Entry::getValue));
+                .collect(toMap(this::getKey, Map.Entry::getValue, (a, b) -> a));
     }
 
     private <T> Map<String, T> singleEntry(final String id, final MetricRegistry metricRegistry,
@@ -203,6 +210,69 @@ public class MetricsEndpoints {
         return metric;
     }
 
+    private String getKey(final Map.Entry<MetricID, Metric> e) {
+        if (Counter.class.isInstance(e.getValue()) || Gauge.class.isInstance(e.getValue())) {
+            return e.getKey().getName() + formatTags(e.getKey());
+        }
+        return e.getKey().getName();
+    }
+
+    // https://github.com/eclipse/microprofile-metrics/issues/508
+    private Object toJson(final Object metric, final String nameSuffix) {
+        if (Timer.class.isInstance(metric)) {
+            final Timer meter = Timer.class.cast(metric);
+            final Map<Object, Object> map = new HashMap<>(15);
+            map.putAll(snapshot(meter.getSnapshot(), nameSuffix));
+            map.putAll(meter(meter, nameSuffix));
+            return map;
+        }
+        if (Meter.class.isInstance(metric)) {
+            return meter(Meter.class.cast(metric), nameSuffix);
+        }
+        if (Histogram.class.isInstance(metric)) {
+            final Histogram histogram = Histogram.class.cast(metric);
+            final Map<Object, Object> map = new HashMap<>(11);
+            map.putAll(snapshot(histogram.getSnapshot(), nameSuffix));
+            map.put("count" + nameSuffix, histogram.getCount());
+            return map;
+        }
+        if (ConcurrentGauge.class.isInstance(metric)) {
+            final ConcurrentGauge concurrentGauge = ConcurrentGauge.class.cast(metric);
+            final Map<Object, Object> map = new HashMap<>(3);
+            map.put("min" + nameSuffix, concurrentGauge.getMin());
+            map.put("current" + nameSuffix, concurrentGauge.getCount());
+            map.put("max" + nameSuffix, concurrentGauge.getMax());
+            return map;
+        }
+        // counters and gauges are unwrapped so skip it
+        return metric;
+    }
+
+    private Map<String, Object> meter(final Metered metered, final String nameSuffix) {
+        final Map<String, Object> map = new HashMap<>(5);
+        map.put("count" + nameSuffix, metered.getCount());
+        map.put("meanRate" + nameSuffix, metered.getMeanRate());
+        map.put("oneMinRate" + nameSuffix, metered.getOneMinuteRate());
+        map.put("fiveMinRate" + nameSuffix, metered.getFiveMinuteRate());
+        map.put("fifteenMinRate" + nameSuffix, metered.getFifteenMinuteRate());
+        return map;
+    }
+
+    private Map<String, Object> snapshot(final Snapshot snapshot, final String nameSuffix) {
+        final Map<String, Object> map = new HashMap<>(10);
+        map.put("p50" + nameSuffix, snapshot.getMedian());
+        map.put("p75" + nameSuffix, snapshot.get75thPercentile());
+        map.put("p95" + nameSuffix, snapshot.get95thPercentile());
+        map.put("p98" + nameSuffix, snapshot.get98thPercentile());
+        map.put("p99" + nameSuffix, snapshot.get99thPercentile());
+        map.put("p999" + nameSuffix, snapshot.get999thPercentile());
+        map.put("min" + nameSuffix, snapshot.getMin());
+        map.put("mean" + nameSuffix, snapshot.getMean());
+        map.put("max" + nameSuffix, snapshot.getMax());
+        map.put("stddev" + nameSuffix, snapshot.getStdDev());
+        return map;
+    }
+
     private MetricRegistry findRegistry(final String registry) {
         switch (Stream.of(MetricRegistry.Type.values()).filter(it -> it.getName().equals(registry)).findFirst()
                 .orElseThrow(() -> new WebApplicationException(Response.Status.NOT_FOUND))) {
@@ -213,6 +283,12 @@ public class MetricsEndpoints {
             default:
                 return applicationRegistry;
         }
+    }
+
+    private String formatTags(final MetricID id) {
+        return id.getTags().isEmpty() ? "" : (';' + id.getTags().entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .collect(joining(",")));
     }
 
     public static class Meta {

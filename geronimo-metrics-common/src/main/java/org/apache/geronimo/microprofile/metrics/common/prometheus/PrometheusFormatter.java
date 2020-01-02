@@ -32,13 +32,13 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Metadata;
 import org.eclipse.microprofile.metrics.Meter;
 import org.eclipse.microprofile.metrics.Metric;
-import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricUnits;
 import org.eclipse.microprofile.metrics.Snapshot;
@@ -96,15 +96,27 @@ public class PrometheusFormatter {
                                 final Map<String, Metric> entries) {
         final Map<String, Metadata> metadatas = registry.getMetadata();
         return entries.entrySet().stream()
-                .map(it -> new Entry(metadatas.get(it.getKey()), registryKey + ':' + toPrometheusKey(metadatas.get(it.getKey())), it.getValue()))
+                .map(it -> {
+                    String key = it.getKey();
+                    final int tagSep = key.indexOf(';');
+                    if (tagSep > 0) {
+                        key = key.substring(0, tagSep);
+                    }
+                    final Metadata metadata = metadatas.get(key);
+                    return new Entry(metadata, registryKey + ':' + toPrometheusKey(metadata), it.getValue());
+                })
                 .filter(it -> prefixFilter == null || prefixFilter.test(it.prometheusKey))
                 .map(entry -> {
                     switch (entry.metadata.getTypeRaw()) {
-                        case COUNTER:
-                        case CONCURRENT_GAUGE: {
+                        case COUNTER: {
                             final String key = toPrometheusKey(entry.metadata);
                             return new StringBuilder()
                                     .append(value(registryKey, key, Counter.class.cast(entry.metric).getCount(), entry.metadata));
+                        }
+                        case CONCURRENT_GAUGE: {
+                            final String key = toPrometheusKey(entry.metadata);
+                            return new StringBuilder()
+                                    .append(value(registryKey, key, ConcurrentGauge.class.cast(entry.metric).getCount(), entry.metadata));
                         }
                         case GAUGE: {
                             final Object val = Gauge.class.cast(entry.metric).getValue();
@@ -183,7 +195,7 @@ public class PrometheusFormatter {
     }
 
     private String toUnitSuffix(final Metadata metadata) {
-        return metadata.getUnit().orElse("").equalsIgnoreCase("none") ?
+        return metadata.getUnit().orElse("none").equalsIgnoreCase("none") ?
                 "" : ("_" + toPrometheusUnit(metadata.getUnit().orElse("")));
     }
 
@@ -290,8 +302,8 @@ public class PrometheusFormatter {
         }
     }
 
-    private String toPrometheus(final Metadata metadata) {
-        return metadata.getName()
+    private String toPrometheus(final Metadata id) {
+        return id.getName()
                 .replaceAll("[^\\w]+", "_")
                 .replaceAll("(.)(\\p{Upper})", "$1_$2")
                 .replace("__", "_")

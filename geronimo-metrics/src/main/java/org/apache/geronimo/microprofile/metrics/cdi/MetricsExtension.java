@@ -60,6 +60,7 @@ import javax.enterprise.util.Nonbinding;
 import org.apache.geronimo.microprofile.metrics.common.BaseMetrics;
 import org.apache.geronimo.microprofile.metrics.common.GaugeImpl;
 import org.apache.geronimo.microprofile.metrics.common.RegistryImpl;
+import org.apache.geronimo.microprofile.metrics.common.jaxrs.MetricsEndpoints;
 import org.apache.geronimo.microprofile.metrics.jaxrs.CdiMetricsEndpoints;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
@@ -86,11 +87,13 @@ public class MetricsExtension implements Extension {
     private final MetricRegistry vendorRegistry = new RegistryImpl();
 
     private final Map<MetricID, Metadata> registrations = new HashMap<>();
-    private final Map<String, Function<BeanManager, Gauge<?>>> gaugeFactories = new HashMap<>();
+    private final Map<MetricID, Function<BeanManager, Gauge<?>>> gaugeFactories = new HashMap<>();
     private final Collection<Runnable> producersRegistrations = new ArrayList<>();
     private final Collection<CreationalContext<?>> creationalContexts = new ArrayList<>();
 
-    void letOtherExtensionsUseRegistries(@Observes final ProcessAnnotatedType<CdiMetricsEndpoints> processAnnotatedType) {
+    private Map<String, String> environmentalTags;
+
+    void vetoEndpointIfNotActivated(@Observes final ProcessAnnotatedType<CdiMetricsEndpoints> processAnnotatedType) {
         if ("false".equalsIgnoreCase(System.getProperty("geronimo.metrics.jaxrs.activated"))) { // default is secured so deploy
             processAnnotatedType.veto();
         }
@@ -99,6 +102,13 @@ public class MetricsExtension implements Extension {
     // can happen in shades
     void vetoDefaultRegistry(@Observes final ProcessAnnotatedType<RegistryImpl> processAnnotatedType) {
         processAnnotatedType.veto();
+    }
+
+    // can happen in shades
+    void vetoNonCdiEndpoint(@Observes final ProcessAnnotatedType<MetricsEndpoints> processAnnotatedType) {
+        if (processAnnotatedType.getAnnotatedType().getJavaClass() == MetricsEndpoints.class) { // not subclasses
+            processAnnotatedType.veto();
+        }
     }
 
     void letOtherExtensionsUseRegistries(@Observes final BeforeBeanDiscovery beforeBeanDiscovery, final BeanManager beanManager) {
@@ -114,6 +124,9 @@ public class MetricsExtension implements Extension {
             final String name = method.getAnnotated().getJavaMember().getName();
             return name.equals("name") || name.equals("tags");
         }).forEach(method -> method.remove(a -> a.annotationType() == Nonbinding.class));
+
+        // we must update @Metrics with that if it exists for the cdi resolution ot match since we make it binding
+        environmentalTags = new MetricID("foo").getTags();
     }
 
     void onMetric(@Observes final ProcessProducerField<? extends Metric, ?> processProducerField, final BeanManager beanManager) {
@@ -132,7 +145,7 @@ public class MetricsExtension implements Extension {
     }
 
     void onMetric(@Observes ProcessProducerMethod<? extends Metric, ?> processProducerMethod,
-                          final BeanManager beanManager) {
+                  final BeanManager beanManager) {
         final org.eclipse.microprofile.metrics.annotation.Metric config = processProducerMethod.getAnnotated()
                 .getAnnotation(org.eclipse.microprofile.metrics.annotation.Metric.class);
         if (config == null) {
@@ -160,7 +173,7 @@ public class MetricsExtension implements Extension {
 
         final MetricType type = findType(clazz);
         if (config != null) {
-            String name = Names.findName(injectionPoint.getMember().getDeclaringClass(), injectionPoint.getMember(),
+            final String name = Names.findName(injectionPoint.getMember().getDeclaringClass(), injectionPoint.getMember(),
                     of(config.name()).filter(it -> !it.isEmpty()).orElseGet(injectionPoint.getMember()::getName), config.absolute(),
                     "");
             final Metadata metadata = Metadata.builder()
@@ -173,7 +186,7 @@ public class MetricsExtension implements Extension {
             final MetricID id = new MetricID(name, createTags(config.tags()));
             addRegistration(metadata, id, true);
 
-            if (!name.equals(config.name())) {
+            if (!name.equals(config.name()) || !environmentalTags.isEmpty()) {
                 final Annotation[] newQualifiers = Stream.concat(metricInjectionPointProcessEvent.getInjectionPoint().getQualifiers().stream()
                                 .filter(it -> it.annotationType() != org.eclipse.microprofile.metrics.annotation.Metric.class),
                         Stream.of(new MetricImpl(metadata, id)))
@@ -317,7 +330,7 @@ public class MetricsExtension implements Extension {
                                 .build();
                         final MetricID metricID = new MetricID(name, createTags(gauge.tags()));
                         addRegistration(metadata, metricID, false);
-                        gaugeFactories.put(name, beanManager -> {
+                        gaugeFactories.put(metricID, beanManager -> {
                             final Object reference = getInstance(javaClass, beanManager);
                             final Method mtd = Method.class.cast(javaMember);
                             return new GaugeImpl<>(reference, mtd);
@@ -378,11 +391,11 @@ public class MetricsExtension implements Extension {
 
     void afterDeploymentValidation(@Observes final AfterDeploymentValidation afterDeploymentValidation,
                                    final BeanManager beanManager) {
-        registrations.values().stream()
-                .filter(m -> m.getTypeRaw() == MetricType.GAUGE)
-                .forEach(metadata -> {
-                    final Gauge<?> gauge = gaugeFactories.get(metadata.getName()).apply(beanManager);
-                    applicationRegistry.register(metadata, gauge);
+        registrations.entrySet().stream()
+                .filter(e -> e.getValue().getTypeRaw() == MetricType.GAUGE)
+                .forEach(entry -> {
+                    final Gauge<?> gauge = gaugeFactories.get(entry.getKey()).apply(beanManager);
+                    applicationRegistry.register(entry.getValue(), gauge, entry.getKey().getTagsAsList().toArray(NO_TAG));
                 });
         producersRegistrations.forEach(Runnable::run);
 
@@ -409,7 +422,9 @@ public class MetricsExtension implements Extension {
             beanClass = javaMember.getDeclaringClass();
         }
         final Metadata metadata = createMetadata(config, clazz, javaMember, beanClass);
-        applicationRegistry.register(metadata, Metric.class.cast(getInstance(clazz, beanManager, bean)));
+        applicationRegistry.register(
+                metadata, Metric.class.cast(getInstance(clazz, beanManager, bean)),
+                createTags(config.tags()));
     }
 
     private Metadata createMetadata(final org.eclipse.microprofile.metrics.annotation.Metric config,

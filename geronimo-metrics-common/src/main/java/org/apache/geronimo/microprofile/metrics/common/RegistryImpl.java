@@ -244,7 +244,7 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Histogram histogram(final String name, final Tag... tags) {
-        return histogram(Metadata.builder().withName(name).withType(MetricType.HISTOGRAM).build());
+        return histogram(Metadata.builder().withName(name).withType(MetricType.HISTOGRAM).build(), tags);
     }
 
     @Override
@@ -254,7 +254,7 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Meter meter(final String name, final Tag... tags) {
-        return meter(Metadata.builder().withName(name).withType(MetricType.METERED).build());
+        return meter(Metadata.builder().withName(name).withType(MetricType.METERED).build(), tags);
     }
 
     @Override
@@ -264,7 +264,7 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Timer timer(final String name, final Tag... tags) {
-        return timer(Metadata.builder().withName(name).withType(MetricType.TIMER).build());
+        return timer(Metadata.builder().withName(name).withType(MetricType.TIMER).build(), tags);
     }
 
     @Override
