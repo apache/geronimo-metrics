@@ -134,6 +134,7 @@ public class ArquillianSetup implements LoadableExtension {
                             final Annotation[] qualifiers = Stream.of(p.getAnnotations()).filter(it -> cdi.getBeanManager().isQualifier(it.annotationType())).toArray(Annotation[]::new);
                             return cdi.select(p.getType(), qualifiers).get();
                         } catch (final RuntimeException re) {
+                            re.printStackTrace();
                             return null;
                         } finally {
                             thread.setContextClassLoader(classLoader);

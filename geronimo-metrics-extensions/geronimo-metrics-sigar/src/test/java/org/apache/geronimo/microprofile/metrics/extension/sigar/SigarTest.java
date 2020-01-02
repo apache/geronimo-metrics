@@ -27,6 +27,7 @@ import javax.inject.Inject;
 
 import org.apache.meecrowave.Meecrowave;
 import org.apache.meecrowave.junit.MeecrowaveRule;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.annotation.RegistryType;
 import org.junit.ClassRule;
@@ -48,7 +49,8 @@ public class SigarTest {
         final List<String> keys = registry.getGauges()
                                              .keySet()
                                              .stream()
-                                             .filter(it -> it.startsWith("sigar."))
+                                             .filter(it -> it.getName().startsWith("sigar."))
+                                             .map(MetricID::getName)
                                              .sorted()
                                              .collect(toList());
         assertTrue(keys.toString(), keys.size() > 10 /*whatever, just check it is registered*/);

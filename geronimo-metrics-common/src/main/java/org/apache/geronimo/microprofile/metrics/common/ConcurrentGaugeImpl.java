@@ -33,8 +33,8 @@ public class ConcurrentGaugeImpl implements ConcurrentGauge {
 
     private volatile Instant currentMinute = CLOCK.instant();
 
-    private volatile long lastMax = -1;
-    private volatile long lastMin = -1;
+    private volatile long lastMax = 0;
+    private volatile long lastMin = 0;
     private final String unit;
 
     public ConcurrentGaugeImpl(final String unit) {

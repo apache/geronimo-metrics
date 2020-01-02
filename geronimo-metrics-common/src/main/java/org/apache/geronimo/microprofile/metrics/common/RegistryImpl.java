@@ -20,12 +20,14 @@ import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toMap;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.Counter;
@@ -48,18 +50,18 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public <T extends Metric> T register(final Metadata metadata, final T metric) throws IllegalArgumentException {
-        final MetricID metricID = new MetricID(metadata.getName());
+        return register(metadata, metric, NO_TAG);
+    }
+
+    @Override
+    public <T extends Metric> T register(final Metadata metadata, final T metric, final Tag... tags) throws IllegalArgumentException {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
         final Holder<? extends Metric> holder = metrics.putIfAbsent(
                 metricID, new Holder<>(metric, metadata, metricID));
         if (holder != null && !metadata.isReusable() && !holder.metadata.isReusable()) {
             throw new IllegalArgumentException("'" + metadata.getName() + "' metric already exists and is not reusable");
         }
         return metric;
-    }
-
-    @Override
-    public <T extends Metric> T register(final Metadata metadata, final T metric, final Tag... tags) throws IllegalArgumentException {
-        return register(Metadata.builder(metadata).build(), metric);
     }
 
     @Override
@@ -90,10 +92,11 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Counter counter(final Metadata metadata, final Tag... tags) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
             holder = new Holder<>(new CounterImpl(
-                    metadata.getUnit().orElse("")), metadata, new MetricID(metadata.getName(), tags));
+                    metadata.getUnit().orElse("")), metadata, metricID);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(holder.metricID, holder);
             if (existing != null) {
                 holder = existing;
@@ -266,7 +269,15 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public boolean remove(final String name) {
-        return remove(new MetricID(name));
+        final AtomicBoolean done = new AtomicBoolean(false);
+        removeMatching((metricID, metric) -> {
+            final boolean equals = Objects.equals(metricID.getName(), name);
+            if (equals) {
+                done.set(true);
+            }
+            return equals;
+        });
+        return done.get();
     }
 
     @Override
