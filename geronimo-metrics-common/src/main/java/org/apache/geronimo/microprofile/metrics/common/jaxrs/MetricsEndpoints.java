@@ -143,7 +143,8 @@ public class MetricsEndpoints {
                           @Context final SecurityContext securityContext,
                           @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
-        return singleEntry(name, findRegistry(registry), this::map);
+        final MetricRegistry metricRegistry = findRegistry(registry);
+        return singleEntry(name, metricRegistry, this::map);
     }
 
     @GET
@@ -191,8 +192,9 @@ public class MetricsEndpoints {
 
     private <T> Map<String, T> singleEntry(final String id, final MetricRegistry metricRegistry,
                                            final Function<Metric, T> metricMapper) {
-        return ofNullable(metricRegistry.getMetrics().get(new MetricID(id)))
-                .map(metric -> singletonMap(id, metricMapper.apply(metric)))
+        final MetricID key = new MetricID(id);
+        return ofNullable(metricRegistry.getMetrics().get(key))
+                .map(metric -> singletonMap(id + formatTags(key), metricMapper.apply(metric)))
                 .orElseGet(Collections::emptyMap);
     }
 
@@ -274,7 +276,8 @@ public class MetricsEndpoints {
     }
 
     private MetricRegistry findRegistry(final String registry) {
-        switch (Stream.of(MetricRegistry.Type.values()).filter(it -> it.getName().equals(registry)).findFirst()
+        switch (Stream.of(MetricRegistry.Type.values())
+                .filter(it -> it.getName().equalsIgnoreCase(registry)).findFirst()
                 .orElseThrow(() -> new WebApplicationException(Response.Status.NOT_FOUND))) {
             case BASE:
                 return baseRegistry;

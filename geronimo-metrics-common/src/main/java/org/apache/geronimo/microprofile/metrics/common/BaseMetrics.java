@@ -65,20 +65,37 @@ public class BaseMetrics {
 
         final ClassLoadingMXBean classLoadingMXBean = ManagementFactory.getClassLoadingMXBean();
         registry.register(Metadata.builder()
-                .withName("classloader.currentLoadedClass.count")
+                .withName("classloader.unloadedClasses.count")
                 .withDisplayName("Current Loaded Class Count")
                 .withDescription("Displays the number of classes that are currently loaded in the Java virtual machine.")
-                .withType(MetricType.COUNTER).withUnit(MetricUnits.NONE).build(), counter(classLoadingMXBean::getLoadedClassCount));
+                .withType(MetricType.GAUGE)
+                .withUnit(MetricUnits.NONE)
+                .build(),
+                gauge(classLoadingMXBean::getUnloadedClassCount));
         registry.register(Metadata.builder()
-                .withName("classloader.totalLoadedClass.count")
+                .withName("classloader.unloadedClasses.total")
+                .withDisplayName("Current Loaded Class Total")
+                .withDescription("Displays the number of classes that are currently loaded in the Java virtual machine.")
+                .withType(MetricType.COUNTER)
+                .withUnit(MetricUnits.NONE)
+                .build(),
+                counter(classLoadingMXBean::getUnloadedClassCount));
+        registry.register(Metadata.builder()
+                .withName("classloader.loadedClasses.count")
                 .withDisplayName("Total Loaded Class Count")
                 .withDescription("Displays the total number of classes that have been loaded since the Java virtual machine has started execution.")
-                .withType(MetricType.COUNTER).withUnit(MetricUnits.NONE).build(), counter(classLoadingMXBean::getTotalLoadedClassCount));
+                .withType(MetricType.GAUGE)
+                .withUnit(MetricUnits.NONE)
+                .build(),
+                gauge(classLoadingMXBean::getTotalLoadedClassCount));
         registry.register(Metadata.builder()
-                .withName("classloader.totalUnloadedClass.count")
-                .withDisplayName("Total Unloaded Loaded Class Count")
-                .withDescription("Displays the total number of classes unloaded since the Java virtual machine has started execution.")
-                .withType(MetricType.COUNTER).withUnit(MetricUnits.NONE).build(), counter(classLoadingMXBean::getTotalLoadedClassCount));
+                .withName("classloader.loadedClasses.total")
+                .withDisplayName("Total Loaded Class Count")
+                .withDescription("Displays the total number of classes that have been loaded since the Java virtual machine has started execution.")
+                .withType(MetricType.COUNTER)
+                .withUnit(MetricUnits.NONE)
+                .build(),
+                counter(classLoadingMXBean::getTotalLoadedClassCount));
 
         final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
         registry.register(Metadata.builder()
