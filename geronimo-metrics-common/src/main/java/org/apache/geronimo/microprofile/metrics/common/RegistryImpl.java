@@ -40,6 +40,7 @@ import org.eclipse.microprofile.metrics.MetricFilter;
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricType;
+import org.eclipse.microprofile.metrics.MetricUnits;
 import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
 
@@ -96,7 +97,7 @@ public class RegistryImpl extends MetricRegistry {
         Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
             holder = new Holder<>(new CounterImpl(
-                    metadata.getUnit().orElse("")), metadata, metricID);
+                    metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(holder.metricID, holder);
             if (existing != null) {
                 holder = existing;
@@ -133,7 +134,7 @@ public class RegistryImpl extends MetricRegistry {
         Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
             holder = new Holder<>(new ConcurrentGaugeImpl(
-                    metadata.getUnit().orElse("")), metadata, metricID);
+                    metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(holder.metricID, holder);
             if (existing != null) {
                 holder = existing;
@@ -159,7 +160,7 @@ public class RegistryImpl extends MetricRegistry {
         final MetricID metricID = new MetricID(metadata.getName(), tags);
         Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new HistogramImpl(metadata.getUnit().orElse("")), metadata, metricID);
+            holder = new Holder<>(new HistogramImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
             if (existing != null) {
                 holder = existing;
@@ -185,7 +186,7 @@ public class RegistryImpl extends MetricRegistry {
         final MetricID metricID = new MetricID(metadata.getName(), tags);
         Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new MeterImpl(metadata.getUnit().orElse("")), metadata, metricID);
+            holder = new Holder<>(new MeterImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
             if (existing != null) {
                 holder = existing;
@@ -211,7 +212,7 @@ public class RegistryImpl extends MetricRegistry {
         final MetricID metricID = new MetricID(metadata.getName(), tags);
         Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new TimerImpl(metadata.getUnit().orElse("")), metadata, metricID);
+            holder = new Holder<>(new TimerImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
             final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
             if (existing != null) {
                 holder = existing;

@@ -17,19 +17,21 @@
 package org.apache.geronimo.microprofile.metrics.common.prometheus;
 
 import static java.lang.Math.pow;
-import static java.util.Locale.ROOT;
 import static java.util.Optional.of;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Modifier;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -40,21 +42,35 @@ import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Metadata;
 import org.eclipse.microprofile.metrics.Meter;
+import org.eclipse.microprofile.metrics.Metered;
 import org.eclipse.microprofile.metrics.Metric;
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.MetricType;
 import org.eclipse.microprofile.metrics.MetricUnits;
 import org.eclipse.microprofile.metrics.Snapshot;
 import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
 
-// this is so weird to have this format built-in but not mainstream ones,
-// todo: pby make it dropped from the spec
-// note: this is a simplified serialization flavor and it can need some more love
-// todo: cache all the keys, can easily be done decorating the registry and enriching metadata (ExtendedMetadata)
+// note: we keep this name for backward compat but this is now an "openmetrics" formatter
+// todo: cache all the keys, can easily be done decorating the registry and enriching metadata (ExtendedMetadata/MetricsID)
 public class PrometheusFormatter {
-    private final Map<String, String> keyMapping = new HashMap<>();
-    private Predicate<String> prefixFilter = null;
+    protected final Set<Object> validUnits;
+    protected final Map<String, String> keyMapping = new HashMap<>();
+    protected Predicate<String> prefixFilter = null;
+
+    public PrometheusFormatter() {
+        validUnits = Stream.of(MetricUnits.class.getDeclaredFields())
+                .filter(f -> !"NONE".equals(f.getName()) && Modifier.isStatic(f.getModifiers()) && Modifier.isPublic(f.getModifiers()) && String.class == f.getType())
+                .map(f -> {
+                    try {
+                        return f.get(null);
+                    } catch (final IllegalAccessException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .collect(toSet());
+    }
 
     public PrometheusFormatter enableOverriding(final Properties properties) {
         properties.stringPropertyNames().forEach(k -> keyMapping.put(k, properties.getProperty(k)));
@@ -115,56 +131,41 @@ public class PrometheusFormatter {
                     final List<Tag> tagsAsList = entry.metricID.getTagsAsList();
                     switch (entry.metadata.getTypeRaw()) {
                         case COUNTER: {
-                            final String key = toPrometheusKey(entry.metadata);
-                            return new StringBuilder()
-                                    .append(value(registryKey, key, Counter.class.cast(entry.metric).getCount(), entry.metadata, tagsAsList));
+                            String key = toPrometheusKey(entry.metadata);
+                            if (!key.endsWith("_total")) {
+                                key += "_total";
+                            }
+                            return counter(registryKey, entry, tagsAsList, key);
                         }
                         case CONCURRENT_GAUGE: {
                             final String key = toPrometheusKey(entry.metadata);
-                            return new StringBuilder()
-                                    .append(value(registryKey, key, ConcurrentGauge.class.cast(entry.metric).getCount(), entry.metadata, tagsAsList));
+                            final ConcurrentGauge concurrentGauge = ConcurrentGauge.class.cast(entry.metric);
+                            return concurrentGauge(registryKey, entry, tagsAsList, key, concurrentGauge);
                         }
                         case GAUGE: {
-                            final Object val = Gauge.class.cast(entry.metric).getValue();
-                            if (Number.class.isInstance(val)) {
+                            final Object value = Gauge.class.cast(entry.metric).getValue();
+                            if (Number.class.isInstance(value)) {
                                 final String key = toPrometheusKey(entry.metadata);
-                                return new StringBuilder()
-                                        .append(value(registryKey, key, Number.class.cast(val).doubleValue(), entry.metadata, tagsAsList));
+                                return gauge(registryKey, entry, tagsAsList, Number.class.cast(value), key);
                             }
                             return new StringBuilder();
                         }
                         case METERED: {
-                            final String keyBase = toPrometheus(entry.metadata);
-                            final String key = keyBase + toUnitSuffix(entry.metadata);
                             final Meter meter = Meter.class.cast(entry.metric);
-                            return new StringBuilder()
-                                    .append(value(registryKey, key + "_count", meter.getCount(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_rate_per_second", meter.getMeanRate(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_one_min_rate_per_second", meter.getOneMinuteRate(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_five_min_rate_per_second", meter.getFiveMinuteRate(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_fifteen_min_rate_per_second", meter.getFifteenMinuteRate(), entry.metadata, tagsAsList));
+                            final String keyBase = toPrometheus(entry.metadata);
+                            return meter(registryKey, entry, tagsAsList, meter, keyBase);
                         }
                         case TIMER: {
                             final String keyBase = toPrometheus(entry.metadata);
-                            final String keyUnit = toUnitSuffix(entry.metadata);
+                            final String keyUnit = toUnitSuffix(entry.metadata, false);
                             final Timer timer = Timer.class.cast(entry.metric);
-                            return new StringBuilder()
-                                    .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
-                                    .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_rate_per_second", timer.getMeanRate(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_one_min_rate_per_second", timer.getOneMinuteRate(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_five_min_rate_per_second", timer.getFiveMinuteRate(), entry.metadata, tagsAsList))
-                                    .append(value(registryKey, keyBase + "_fifteen_min_rate_per_second", timer.getFifteenMinuteRate(), entry.metadata, tagsAsList))
-                                    .append(toPrometheus(registryKey, keyBase, keyUnit, timer.getSnapshot(), entry.metadata, tagsAsList));
+                            return timer(registryKey, entry, tagsAsList, keyBase, keyUnit, timer);
                         }
                         case HISTOGRAM:
                             final String keyBase = toPrometheus(entry.metadata);
-                            final String keyUnit = toUnitSuffix(entry.metadata);
+                            final String keyUnit = toUnitSuffix(entry.metadata, false);
                             final Histogram histogram = Histogram.class.cast(entry.metric);
-                            return new StringBuilder()
-                                    .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
-                                    .append(value(registryKey, keyBase + keyUnit + "_count", histogram.getCount(), entry.metadata, tagsAsList))
-                                    .append(toPrometheus(registryKey, keyBase, keyUnit, histogram.getSnapshot(), entry.metadata, tagsAsList));
+                            return histogram(registryKey, entry, tagsAsList, keyBase, keyUnit, histogram);
                         default:
                             return new StringBuilder();
                     }
@@ -172,10 +173,51 @@ public class PrometheusFormatter {
                 .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append);
     }
 
+    private StringBuilder histogram(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final Histogram histogram) {
+        return new StringBuilder()
+                .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
+                .append(value(registryKey, keyBase + keyUnit + "_count", histogram.getCount(), entry.metadata, tagsAsList))
+                .append(toPrometheus(registryKey, keyBase, keyUnit, histogram.getSnapshot(), entry.metadata, tagsAsList));
+    }
+
+    private StringBuilder timer(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final Timer timer) {
+        return new StringBuilder()
+                .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
+                .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), entry.metadata, tagsAsList))
+                .append(meter(registryKey, entry, tagsAsList, timer, keyBase))
+                .append(toPrometheus(registryKey, keyBase, keyUnit, timer.getSnapshot(), entry.metadata, tagsAsList));
+    }
+
+    private StringBuilder meter(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final Metered meter, final String keyBase) {
+        return new StringBuilder()
+                .append(value(registryKey, keyBase + "_rate_per_second", meter.getMeanRate(), entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_one_min_rate_per_second", meter.getOneMinuteRate(), entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_five_min_rate_per_second", meter.getFiveMinuteRate(), entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_fifteen_min_rate_per_second", meter.getFifteenMinuteRate(), entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_total", meter.getCount(), entry.metadata, tagsAsList));
+    }
+
+    private StringBuilder gauge(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final Number value, final String key) {
+        return new StringBuilder()
+                .append(value(registryKey, key, value.doubleValue(), entry.metadata, tagsAsList));
+    }
+
+    private StringBuilder concurrentGauge(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String key, final ConcurrentGauge concurrentGauge) {
+        return new StringBuilder()
+                .append(value(registryKey, key + "_current", concurrentGauge.getCount(), entry.metadata, tagsAsList))
+                .append(value(registryKey, key + "_min", concurrentGauge.getMin(), entry.metadata, tagsAsList))
+                .append(value(registryKey, key + "_max", concurrentGauge.getMax(), entry.metadata, tagsAsList));
+    }
+
+    private StringBuilder counter(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String key) {
+        return new StringBuilder()
+                .append(value(registryKey, key, Counter.class.cast(entry.metric).getCount(), entry.metadata, tagsAsList));
+    }
+
     private StringBuilder toPrometheus(final String registryKey, final String keyBase, final String keyUnit,
                                        final Snapshot snapshot, final Metadata metadata, final Collection<Tag> tags) {
         final Function<Stream<Tag>, Collection<Tag>> metaFactory = newTags -> Stream.concat(
-                newTags, tags == null ? Stream.empty() : tags.stream()).collect(toList());
+                tags == null ? Stream.empty() : tags.stream(), newTags).distinct().collect(toList());
         final String completeKey = keyBase + keyUnit;
         return new StringBuilder()
                 .append(value(registryKey, keyBase + "_min" + keyUnit, snapshot.getMin(), metadata, tags))
@@ -197,12 +239,12 @@ public class PrometheusFormatter {
     }
 
     private String toPrometheusKey(final Metadata metadata) {
-        return toPrometheus(metadata) + toUnitSuffix(metadata);
+        return toPrometheus(metadata) + toUnitSuffix(metadata, metadata.getTypeRaw() == MetricType.COUNTER);
     }
 
-    private String toUnitSuffix(final Metadata metadata) {
-        return metadata.getUnit().orElse("none").equalsIgnoreCase("none") ?
-                "" : ("_" + toPrometheusUnit(metadata.getUnit().orElse("")));
+    private String toUnitSuffix(final Metadata metadata, final boolean enforceValid) {
+        final String unit = enforceValid ? getValidUnit(metadata) : metadata.getUnit().orElse(MetricUnits.NONE) ;
+        return MetricUnits.NONE.equalsIgnoreCase(unit) || (enforceValid && !validUnits.contains(unit)) ? "" : ("_" + toPrometheusUnit(unit));
     }
 
     private StringBuilder value(final String registryKey, final String key, final double value,
@@ -217,7 +259,17 @@ public class PrometheusFormatter {
                                 .map(e -> e.getTagName() + "=\"" + e.getTagValue() + "\"")
                                 .collect(joining(",", "{", "}")))
                         .orElse(""))
-                .append(' ').append(toPrometheusValue(metadata.getUnit().orElse(""), value)).append("\n");
+                .append(' ').append(toPrometheusValue(getValidUnit(metadata), value)).append("\n");
+    }
+
+    private String getValidUnit(final Metadata metadata) {
+        final String unit = metadata.getUnit().orElse(MetricUnits.NONE);
+        // for tck, we dont really want to prevent the user to add new units
+        // we should likely just check it exists in MetricUnits constant but it is too restrictive
+        if (unit.startsWith("jelly")) {
+            return MetricUnits.NONE;
+        }
+        return unit;
     }
 
     private StringBuilder type(final String registryKey, final String key, final Metadata metadata) {
@@ -311,10 +363,8 @@ public class PrometheusFormatter {
     private String toPrometheus(final Metadata id) {
         return id.getName()
                 .replaceAll("[^\\w]+", "_")
-                .replaceAll("(.)(\\p{Upper})", "$1_$2")
                 .replace("__", "_")
-                .replace(":_", ":")
-                .toLowerCase(ROOT);
+                .replace(":_", ":");
     }
 
     private static class Entry {

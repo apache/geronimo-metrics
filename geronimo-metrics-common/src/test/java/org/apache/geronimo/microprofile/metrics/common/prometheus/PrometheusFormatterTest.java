@@ -37,17 +37,19 @@ public class PrometheusFormatterTest {
         final Map<String, Metric> metrics = singletonMap("myMetric", (Gauge<Long>) () -> 1234L);
         metrics.forEach(registry::register);
         assertEquals(
-                "# TYPE sample:my_metric gauge\nsample:my_metric 1234.0\n",
+                "# TYPE sample_myMetric gauge\n" +
+                        "sample_myMetric 1234.0\n",
                 prometheusFormatter.toText(registry, "sample", metrics).toString());
         System.setProperty("geronimo.metrics.prometheus.mapping.sample:my_metric", "renamed");
         prometheusFormatter.enableOverriding();
         assertEquals(
-                "# TYPE renamed gauge\nrenamed 1234.0\n",
+                "# TYPE sample_myMetric gauge\n" +
+                        "sample_myMetric 1234.0\n",
                 prometheusFormatter.toText(registry, "sample", metrics).toString());
         System.clearProperty("sample:my_metric");
         System.setProperty("geronimo.metrics.prometheus.mapping.sample:my_metric", "renamed");
         prometheusFormatter.enableOverriding(new Properties() {{
-            setProperty("sample:my_metric", "again");
+            setProperty("sample_myMetric", "again");
         }});
         assertEquals(
                 "# TYPE again gauge\nagain 1234.0\n",
@@ -63,14 +65,17 @@ public class PrometheusFormatterTest {
         metrics.put("myMetric2", (Gauge<Long>) () -> 1235L);
         metrics.forEach(registry::register);
         assertEquals(
-                "# TYPE sample:my_metric1 gauge\nsample:my_metric1 1234.0\n" +
-                        "# TYPE sample:my_metric2 gauge\nsample:my_metric2 1235.0\n",
+                "# TYPE sample_myMetric1 gauge\n" +
+                        "sample_myMetric1 1234.0\n" +
+                        "# TYPE sample_myMetric2 gauge\n" +
+                        "sample_myMetric2 1235.0\n",
                 prometheusFormatter.toText(registry, "sample", metrics).toString());
         prometheusFormatter.enableOverriding(new Properties() {{
-            setProperty("geronimo.metrics.filter.prefix", "sample:my_metric2");
+            setProperty("geronimo.metrics.filter.prefix", "sample_myMetric2");
         }});
         assertEquals(
-                "# TYPE sample:my_metric2 gauge\nsample:my_metric2 1235.0\n",
+                "# TYPE sample_myMetric2 gauge\n" +
+                        "sample_myMetric2 1235.0\n",
                 prometheusFormatter.toText(registry, "sample", metrics).toString());
     }
 }

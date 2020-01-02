@@ -26,7 +26,9 @@ import static java.util.stream.Collectors.toMap;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import javax.ws.rs.GET;
@@ -57,6 +59,8 @@ import org.eclipse.microprofile.metrics.Timer;
 
 @Path("metrics")
 public class MetricsEndpoints {
+    private final Pattern semicolon = Pattern.compile(";");
+
     private MetricRegistry baseRegistry;
     private MetricRegistry vendorRegistry;
     private MetricRegistry applicationRegistry;
@@ -96,7 +100,7 @@ public class MetricsEndpoints {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return Stream.of(MetricRegistry.Type.values())
                 .collect(toMap(MetricRegistry.Type::getName, it -> findRegistry(it.getName()).getMetrics().entrySet().stream()
-                        .collect(toMap(this::getKey, m -> toJson(map(m.getValue()), formatTags(m.getKey())), (a, b) -> a))));
+                        .collect(toMap(this::getKey, m -> toJson(map(m.getValue()), formatTags(m.getKey())), this::merge))));
     }
 
     @GET
@@ -121,7 +125,7 @@ public class MetricsEndpoints {
                           @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
         return findRegistry(registry).getMetrics().entrySet().stream()
-                .collect(toMap(this::getKey, it -> toJson(map(it.getValue()), formatTags(it.getKey())), (a, b) -> a));
+                .collect(toMap(this::getKey, it -> toJson(map(it.getValue()), formatTags(it.getKey())), this::merge));
     }
 
     @GET
@@ -169,8 +173,9 @@ public class MetricsEndpoints {
                               @Context final SecurityContext securityContext,
                               @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
-        return ofNullable(findRegistry(registry).getMetadata().get(name))
-                .map(metric -> singletonMap(name, mapMeta(metric, new MetricID(name))))
+        final MetricRegistry metricRegistry = findRegistry(registry);
+        return ofNullable(metricRegistry.getMetadata().get(name))
+                .map(metadata -> singletonMap(name, mapMeta(metadata, findMetricId(metricRegistry, metadata))))
                 .orElse(emptyMap());
     }
 
@@ -181,21 +186,48 @@ public class MetricsEndpoints {
                               @Context final SecurityContext securityContext,
                               @Context final UriInfo uriInfo) {
         securityValidator.checkSecurity(securityContext, uriInfo);
-        return findRegistry(registry).getMetadata().entrySet().stream()
-                .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue(), new MetricID(e.getKey())), (a, b) -> a));
+        final MetricRegistry metricRegistry = findRegistry(registry);
+        return metricRegistry.getMetadata().entrySet().stream()
+                .collect(toMap(Map.Entry::getKey, e -> mapMeta(e.getValue(), findMetricId(metricRegistry, e.getValue())), this::merge));
+    }
+
+    private MetricID findMetricId(final MetricRegistry metricRegistry, final Metadata value) {
+        final Map<MetricID, Metric> metrics = metricRegistry.getMetrics();
+        final MetricID directKey = new MetricID(value.getName());
+        if (metrics.containsKey(directKey)) {
+            return directKey;
+        }
+        return metrics.keySet().stream()
+                .filter(it -> Objects.equals(it.getName(), value.getName()))
+                .findFirst()
+                .orElse(directKey);
+    }
+
+    private <A> A merge(final A a, final A b) {
+        if (Map.class.isInstance(a) && Map.class.isInstance(b)) {
+            final Map<String, Object> firstMap = (Map<String, Object>) a;
+            final Map<String, Object> secondMap = (Map<String, Object>) b;
+            final Map<String, Object> merged = Stream.concat(firstMap.entrySet().stream(), secondMap.entrySet().stream())
+                    .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (m1, m2) -> m1));
+            return (A) merged;
+        }
+        return a;
     }
 
     private Map<String, Metric> metrics(final MetricRegistry metricRegistry) {
         return metricRegistry.getMetrics().entrySet().stream()
-                .collect(toMap(this::getKey, Map.Entry::getValue, (a, b) -> a));
+                .collect(toMap(this::getKey, Map.Entry::getValue, this::merge));
     }
 
     private <T> Map<String, T> singleEntry(final String id, final MetricRegistry metricRegistry,
                                            final Function<Metric, T> metricMapper) {
         final MetricID key = new MetricID(id);
-        return ofNullable(metricRegistry.getMetrics().get(key))
+        final Map<MetricID, Metric> metrics = metricRegistry.getMetrics();
+        return ofNullable(metrics.get(key)) // try first without any tag (fast access)
                 .map(metric -> singletonMap(id + formatTags(key), metricMapper.apply(metric)))
-                .orElseGet(Collections::emptyMap);
+                .orElseGet(() -> metrics.keySet().stream().filter(it -> Objects.equals(it.getName(), id)).findFirst() // else find first matching id
+                        .map(metric -> singletonMap(id + formatTags(key), metricMapper.apply(metrics.get(metric))))
+                        .orElseGet(Collections::emptyMap));
     }
 
     private Meta mapMeta(final Metadata value, final MetricID metricID) {
@@ -289,9 +321,9 @@ public class MetricsEndpoints {
     }
 
     private String formatTags(final MetricID id) {
-        return id.getTags().isEmpty() ? "" : (';' + id.getTags().entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .collect(joining(",")));
+        return id.getTags().isEmpty() ? "" : (';' + id.getTagsAsList().stream()
+                .map(e -> e.getTagName() + "=" + semicolon.matcher(e.getTagValue()).replaceAll("_"))
+                .collect(joining(";")));
     }
 
     public static class Meta {
@@ -331,7 +363,7 @@ public class MetricsEndpoints {
             return value.isReusable();
         }
 
-        public String getTags() { // not sure why tck expect it, sounds worse than native getTags for clients
+        public String getTags() { // not sure why tck expect it, sounds worse than native getTags for clients (array of key/values)
             return metricID.getTags().entrySet().stream().map(e -> e.getKey() + '=' + e.getValue()).collect(joining(","));
         }
     }
