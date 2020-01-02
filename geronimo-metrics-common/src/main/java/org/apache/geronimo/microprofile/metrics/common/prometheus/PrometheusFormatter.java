@@ -108,7 +108,7 @@ public class PrometheusFormatter {
                         key = key.substring(0, tagSep);
                     }
                     final Metadata metadata = metadatas.get(key);
-                    return new Entry(metadata, registryKey + ':' + toPrometheusKey(metadata), it.getValue(), ids.get(it.getValue()));
+                    return new Entry(metadata, registryKey + '_' + toPrometheusKey(metadata), it.getValue(), ids.get(it.getValue()));
                 })
                 .filter(it -> prefixFilter == null || prefixFilter.test(it.prometheusKey))
                 .map(entry -> {
@@ -207,7 +207,7 @@ public class PrometheusFormatter {
 
     private StringBuilder value(final String registryKey, final String key, final double value,
                                 final Metadata metadata, final Collection<Tag> tags) {
-        final String builtKey = registryKey + ':' + key;
+        final String builtKey = registryKey + '_' + key;
         return new StringBuilder()
                 .append(type(registryKey, key, metadata))
                 .append(keyMapping.getOrDefault(builtKey, builtKey))
@@ -221,7 +221,7 @@ public class PrometheusFormatter {
     }
 
     private StringBuilder type(final String registryKey, final String key, final Metadata metadata) {
-        final String builtKey = registryKey + ':' + key;
+        final String builtKey = registryKey + '_' + key;
         final StringBuilder builder = new StringBuilder()
                 .append("# TYPE ").append(keyMapping.getOrDefault(builtKey, builtKey));
         if (metadata != null) {
