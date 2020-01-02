@@ -55,7 +55,7 @@ public class SigarTest {
                                              .collect(toList());
         assertTrue(keys.toString(), keys.size() > 10 /*whatever, just check it is registered*/);
         // ensure gauge is usable
-        final Object cpu = registry.getGauges().get("sigar.cpu.total").getValue();
+        final Object cpu = registry.getGauges().get(new MetricID("sigar.cpu.total")).getValue();
         assertNotNull(cpu);
     }
 }
