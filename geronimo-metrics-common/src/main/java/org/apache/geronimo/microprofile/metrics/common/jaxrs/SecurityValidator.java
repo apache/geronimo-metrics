@@ -88,5 +88,4 @@ public class SecurityValidator {
     protected String config(final String key) {
         return System.getProperty(key);
     }
-
 }
