@@ -24,6 +24,7 @@ import org.apache.geronimo.microprofile.metrics.extension.common.RegistryTypeLit
 import org.apache.meecrowave.Meecrowave;
 import org.apache.meecrowave.junit.MeecrowaveRule;
 import org.eclipse.microprofile.metrics.Gauge;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -40,7 +41,7 @@ public class TomcatExtensionTest {
                                .select(MetricRegistry.class, new RegistryTypeLiteral(MetricRegistry.Type.BASE))
                                .get()
                                .getGauges()
-                               .get("server.executor.port_" + MEECROWAVE.getConfiguration().getHttpPort() + ".active");
+                               .get(new MetricID("server.executor.port_" + MEECROWAVE.getConfiguration().getHttpPort() + ".active"));
         assertNotNull(gauge);
         assertNotNull(gauge.getValue());
     }

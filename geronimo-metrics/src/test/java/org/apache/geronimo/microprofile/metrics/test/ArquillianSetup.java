@@ -23,10 +23,14 @@ import java.util.stream.Stream;
 
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
+import javax.enterprise.util.AnnotationLiteral;
 
 import org.apache.catalina.Context;
 import org.apache.meecrowave.Meecrowave;
 import org.apache.meecrowave.arquillian.MeecrowaveContainer;
+import org.eclipse.microprofile.metrics.MetricID;
+import org.eclipse.microprofile.metrics.Tag;
+import org.eclipse.microprofile.metrics.annotation.Metric;
 import org.jboss.arquillian.container.spi.client.container.DeployableContainer;
 import org.jboss.arquillian.container.spi.context.annotation.ContainerScoped;
 import org.jboss.arquillian.container.spi.context.annotation.DeploymentScoped;
@@ -132,14 +136,70 @@ public class ArquillianSetup implements LoadableExtension {
                         try {
                             final CDI<Object> cdi = CDI.current();
                             final Annotation[] qualifiers = Stream.of(p.getAnnotations()).filter(it -> cdi.getBeanManager().isQualifier(it.annotationType())).toArray(Annotation[]::new);
-                            return cdi.select(p.getType(), qualifiers).get();
+                            return cdi.select(p.getType(), fixQualifiers(qualifiers)).get();
                         } catch (final RuntimeException re) {
+                            re.printStackTrace(); // easier to debug when some test fail since TCK inject metrics as params
                             return null;
                         } finally {
                             thread.setContextClassLoader(classLoader);
                         }
                     })
                     .toArray();
+        }
+
+        private Annotation[] fixQualifiers(final Annotation[] qualifiers) {
+            return Stream.of(qualifiers)
+                    .map(it -> {
+                        if (Metric.class == it.annotationType()) { // we make tags and name binding so ensure it uses the right values
+                            final Metric delegate = Metric.class.cast(it);
+                            return new MetricLiteral(delegate, new MetricID(delegate.name(), Stream.of(delegate.tags()).filter(tag -> tag.contains("=")).map(tag -> {
+                                final int sep = tag.indexOf("=");
+                                return new Tag(tag.substring(0, sep), tag.substring(sep + 1));
+                            }).toArray(Tag[]::new)).getTagsAsList().stream().map(t -> t.getTagName() + '=' + t.getTagValue()).toArray(String[]::new));
+                        }
+                        return it;
+                    })
+                    .toArray(Annotation[]::new);
+        }
+    }
+
+    private static class MetricLiteral extends AnnotationLiteral<Metric> implements Metric {
+        private final Metric delegate;
+        private final String[] tags;
+
+        private MetricLiteral(final Metric delegate, final String[] tags) {
+            this.delegate = delegate;
+            this.tags = tags;
+        }
+
+        @Override
+        public String name() {
+            return delegate.name();
+        }
+
+        @Override
+        public String[] tags() {
+            return tags;
+        }
+
+        @Override
+        public boolean absolute() {
+            return delegate.absolute();
+        }
+
+        @Override
+        public String displayName() {
+            return delegate.displayName();
+        }
+
+        @Override
+        public String description() {
+            return delegate.description();
+        }
+
+        @Override
+        public String unit() {
+            return delegate.unit();
         }
     }
 

@@ -39,16 +39,6 @@ public class CounterImpl implements Counter {
     }
 
     @Override
-    public void dec() {
-        delegate.decrement();
-    }
-
-    @Override
-    public void dec(final long n) {
-        delegate.add(-n);
-    }
-
-    @Override
     public long getCount() {
         return delegate.sum();
     }

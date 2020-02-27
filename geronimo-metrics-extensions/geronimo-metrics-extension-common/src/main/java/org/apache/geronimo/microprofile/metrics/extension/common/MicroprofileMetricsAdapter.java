@@ -34,9 +34,14 @@ public class MicroprofileMetricsAdapter {
 
     public Consumer<Definition> registrer() {
         return def -> {
-            final Metadata metadata = new Metadata(def.getName(), def.getDisplayName(), def.getDescription(), GAUGE,
-                    def.getUnit());
-            metadata.setReusable(true);
+            final Metadata metadata = Metadata.builder()
+                .withName(def.getName())
+                .withDisplayName(def.getDisplayName())
+                .withDescription(def.getDescription())
+                .withType(GAUGE)
+                .withUnit(def.getUnit())
+                .reusable(true)
+                .build();
             try {
                 registry.register(metadata, (Gauge<Double>) () -> def.getEvaluator()
                                                                      .getAsDouble());

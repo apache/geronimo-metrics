@@ -37,7 +37,9 @@ import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
 import org.eclipse.microprofile.metrics.Meter;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.annotation.Metered;
 
 @Metered
@@ -53,6 +55,9 @@ public class MeteredInterceptor implements Serializable {
 
     @Inject
     private BeanManager beanManager;
+
+    @Inject
+    private MetricsExtension extension;
 
     private transient volatile ConcurrentMap<Executable, Meter> meters = new ConcurrentHashMap<>();
 
@@ -90,7 +95,8 @@ public class MeteredInterceptor implements Serializable {
                     metered != null && metered.absolute(),
                     ofNullable(type.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
 
-            meter = Meter.class.cast(registry.getMetrics().get(name));
+            meter = Meter.class.cast(registry.getMetrics().get(
+                    new MetricID(name, metered == null ? new Tag[0] : extension.createTags(metered.tags()))));
             if (meter == null) {
                 throw new IllegalStateException("No meter with name [" + name + "] found in registry [" + registry + "]");
             }

@@ -26,7 +26,7 @@
 
   <groupId>org.apache.geronimo</groupId>
   <artifactId>geronimo-metrics-parent</artifactId>
-  <version>1.0.3</version>
+  <version>1.0.4-SNAPSHOT</version>
   <name>Geronimo Metrics</name>
   <packaging>pom</packaging>
 
@@ -38,13 +38,13 @@
     <connection>scm:git:https://gitbox.apache.org/repos/asf/geronimo-metrics.git</connection>
     <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/geronimo-metrics.git</developerConnection>
     <url>https://gitbox.apache.org/repos/asf/geronimo-metrics.git</url>
-    <tag>geronimo-metrics-parent-1.0.3</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <properties>
-    <spec.version>1.1.1</spec.version>
+    <spec.version>2.2.1</spec.version>
     <arquillian.version>1.1.8.Final</arquillian.version>
-    <meecrowave.version>1.2.3</meecrowave.version>
+    <meecrowave.version>1.2.8</meecrowave.version>
   </properties>
 
   <modules>
@@ -54,6 +54,18 @@
   </modules>
 
   <dependencies>
+    <dependency>
+      <groupId>org.eclipse.microprofile.config</groupId>
+      <artifactId>microprofile-config-api</artifactId>
+      <optional>true</optional> <!-- no more optional but we code as if it is hoping this regression gets fixed -->
+    </dependency>
+    <dependency>
+      <groupId>org.apache.geronimo.config</groupId>
+      <artifactId>geronimo-config-impl</artifactId>
+      <version>1.2.2</version>
+      <scope>test</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.eclipse.microprofile.metrics</groupId>
       <artifactId>microprofile-metrics-api</artifactId>

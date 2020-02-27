@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 <!--
     Licensed to the Apache Software Foundation (ASF) under one or more
     contributor license agreements.  See the NOTICE file distributed with
@@ -15,19 +15,10 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation=" http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <parent>
-    <artifactId>geronimo-metrics-extensions</artifactId>
-    <groupId>org.apache.geronimo</groupId>
-    <version>1.0.4-SNAPSHOT</version>
-  </parent>
-  <modelVersion>4.0.0</modelVersion>
-
-  <artifactId>geronimo-metrics-extension-common</artifactId>
-  <name>Geronimo Metrics :: Extensions :: Common</name>
-  <packaging>bundle</packaging>
-
-  <properties>
-    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics.extension.common</geronimo-metrics.Automatic-Module-Name>
-  </properties>
-</project>
+<beans xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+        http://xmlns.jcp.org/xml/ns/javaee
+        http://xmlns.jcp.org/xml/ns/javaee/beans_2_0.xsd"
+       bean-discovery-mode="none"
+       version="2.0" />

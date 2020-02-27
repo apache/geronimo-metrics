@@ -36,7 +36,9 @@ import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
 
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
 import org.eclipse.microprofile.metrics.annotation.Timed;
 
@@ -89,7 +91,8 @@ public class TimedInterceptor implements Serializable {
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, timed == null ? null : timed.name(), timed != null && timed.absolute(),
                     ofNullable(type.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
-            timer = Timer.class.cast(registry.getMetrics().get(name));
+            timer = Timer.class.cast(registry.getMetrics().get(
+                    new MetricID(name, timed == null ? new Tag[0] : extension.createTags(timed.tags()))));
             if (timer == null) {
                 throw new IllegalStateException("No timer with name [" + name + "] found in registry [" + registry + "]");
             }

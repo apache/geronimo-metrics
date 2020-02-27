@@ -16,16 +16,20 @@
  */
 package org.apache.geronimo.microprofile.metrics.common;
 
+import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toMap;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Histogram;
@@ -33,16 +37,28 @@ import org.eclipse.microprofile.metrics.Metadata;
 import org.eclipse.microprofile.metrics.Meter;
 import org.eclipse.microprofile.metrics.Metric;
 import org.eclipse.microprofile.metrics.MetricFilter;
+import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricType;
+import org.eclipse.microprofile.metrics.MetricUnits;
+import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
 
 public class RegistryImpl extends MetricRegistry {
-    private final ConcurrentMap<String, Holder<? extends Metric>> metrics = new ConcurrentHashMap<>();
+    private static final Tag[] NO_TAG = new Tag[0];
+
+    private final ConcurrentMap<MetricID, Holder<? extends Metric>> metrics = new ConcurrentHashMap<>();
 
     @Override
     public <T extends Metric> T register(final Metadata metadata, final T metric) throws IllegalArgumentException {
-        final Holder<? extends Metric> holder = metrics.putIfAbsent(metadata.getName(), new Holder<>(metric, metadata));
+        return register(metadata, metric, NO_TAG);
+    }
+
+    @Override
+    public <T extends Metric> T register(final Metadata metadata, final T metric, final Tag... tags) throws IllegalArgumentException {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        final Holder<? extends Metric> holder = metrics.putIfAbsent(
+                metricID, new Holder<>(metric, metadata, metricID));
         if (holder != null && !metadata.isReusable() && !holder.metadata.isReusable()) {
             throw new IllegalArgumentException("'" + metadata.getName() + "' metric already exists and is not reusable");
         }
@@ -62,23 +78,27 @@ public class RegistryImpl extends MetricRegistry {
             type = MetricType.TIMER;
         } else if (Histogram.class.isInstance(metric)) {
             type = MetricType.HISTOGRAM;
+        } else if (ConcurrentGauge.class.isInstance(metric)) {
+            type = MetricType.CONCURRENT_GAUGE;
         } else {
             type = MetricType.INVALID;
         }
-        return register(new Metadata(name, type), metric);
-    }
-
-    @Override
-    public <T extends Metric> T register(final String name, final T metric, final Metadata metadata) throws IllegalArgumentException {
-        return register(metadata, metric);
+        return register(Metadata.builder().withName(name).withType(type).build(), metric);
     }
 
     @Override
     public Counter counter(final Metadata metadata) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        return counter(metadata, NO_TAG);
+    }
+
+    @Override
+    public Counter counter(final Metadata metadata, final Tag... tags) {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new CounterImpl(metadata.getUnit()), metadata);
-            final Holder<? extends Metric> existing = metrics.putIfAbsent(metadata.getName(), holder);
+            holder = new Holder<>(new CounterImpl(
+                    metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
+            final Holder<? extends Metric> existing = metrics.putIfAbsent(holder.metricID, holder);
             if (existing != null) {
                 holder = existing;
             }
@@ -94,11 +114,54 @@ public class RegistryImpl extends MetricRegistry {
     }
 
     @Override
-    public Histogram histogram(final Metadata metadata) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+    public ConcurrentGauge concurrentGauge(final String name) {
+        return concurrentGauge(Metadata.builder().withName(name).withType(MetricType.CONCURRENT_GAUGE).build());
+    }
+
+    @Override
+    public ConcurrentGauge concurrentGauge(final String name, final Tag... tags) {
+        return concurrentGauge(Metadata.builder().withName(name).withType(MetricType.CONCURRENT_GAUGE).build(), tags);
+    }
+
+    @Override
+    public ConcurrentGauge concurrentGauge(final Metadata metadata) {
+        return concurrentGauge(metadata, NO_TAG);
+    }
+
+    @Override
+    public ConcurrentGauge concurrentGauge(final Metadata metadata, final Tag... tags) {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new HistogramImpl(metadata.getUnit()), metadata);
-            final Holder<? extends Metric> existing = metrics.putIfAbsent(metadata.getName(), holder);
+            holder = new Holder<>(new ConcurrentGaugeImpl(
+                    metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
+            final Holder<? extends Metric> existing = metrics.putIfAbsent(holder.metricID, holder);
+            if (existing != null) {
+                holder = existing;
+            }
+        } else if (!metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and is not set as reusable");
+        } else if (!holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and was not set as reusable");
+        }
+        if (!ConcurrentGauge.class.isInstance(holder.metric)) {
+            throw new IllegalArgumentException(holder.metric + " is not a counter");
+        }
+        return ConcurrentGauge.class.cast(holder.metric);
+    }
+
+    @Override
+    public Histogram histogram(final Metadata metadata) {
+        return histogram(metadata, NO_TAG);
+    }
+
+    @Override
+    public Histogram histogram(final Metadata metadata, final Tag... tags) {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
+        if (holder == null) {
+            holder = new Holder<>(new HistogramImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
+            final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
             if (existing != null) {
                 holder = existing;
             }
@@ -115,10 +178,16 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Meter meter(final Metadata metadata) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        return meter(metadata, NO_TAG);
+    }
+
+    @Override
+    public Meter meter(final Metadata metadata, final Tag... tags) {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new MeterImpl(metadata.getUnit()), metadata);
-            final Holder<? extends Metric> existing = metrics.putIfAbsent(metadata.getName(), holder);
+            holder = new Holder<>(new MeterImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
+            final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
             if (existing != null) {
                 holder = existing;
             }
@@ -135,10 +204,16 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Timer timer(final Metadata metadata) {
-        Holder<? extends Metric> holder = metrics.get(metadata.getName());
+        return timer(metadata, NO_TAG);
+    }
+
+    @Override
+    public Timer timer(final Metadata metadata, final Tag... tags) {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
         if (holder == null) {
-            holder = new Holder<>(new TimerImpl(metadata.getUnit()), metadata);
-            final Holder<? extends Metric> existing = metrics.putIfAbsent(metadata.getName(), holder);
+            holder = new Holder<>(new TimerImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
+            final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
             if (existing != null) {
                 holder = existing;
             }
@@ -155,27 +230,60 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public Counter counter(final String name) {
-        return counter(new Metadata(name, MetricType.COUNTER));
+        return counter(Metadata.builder().withName(name).withType(MetricType.COUNTER).build(), NO_TAG);
+    }
+
+    @Override
+    public Counter counter(final String name, final Tag... tags) {
+        return counter(Metadata.builder().withName(name).withType(MetricType.COUNTER).build(), tags);
     }
 
     @Override
     public Histogram histogram(final String name) {
-        return histogram(new Metadata(name, MetricType.HISTOGRAM));
+        return histogram(Metadata.builder().withName(name).withType(MetricType.HISTOGRAM).build());
+    }
+
+    @Override
+    public Histogram histogram(final String name, final Tag... tags) {
+        return histogram(Metadata.builder().withName(name).withType(MetricType.HISTOGRAM).build(), tags);
     }
 
     @Override
     public Meter meter(final String name) {
-        return meter(new Metadata(name, MetricType.METERED));
+        return meter(Metadata.builder().withName(name).withType(MetricType.METERED).build());
+    }
+
+    @Override
+    public Meter meter(final String name, final Tag... tags) {
+        return meter(Metadata.builder().withName(name).withType(MetricType.METERED).build(), tags);
     }
 
     @Override
     public Timer timer(final String name) {
-        return timer(new Metadata(name, MetricType.TIMER));
+        return timer(Metadata.builder().withName(name).withType(MetricType.TIMER).build());
+    }
+
+    @Override
+    public Timer timer(final String name, final Tag... tags) {
+        return timer(Metadata.builder().withName(name).withType(MetricType.TIMER).build(), tags);
     }
 
     @Override
     public boolean remove(final String name) {
-        return metrics.remove(name) != null;
+        final AtomicBoolean done = new AtomicBoolean(false);
+        removeMatching((metricID, metric) -> {
+            final boolean equals = Objects.equals(metricID.getName(), name);
+            if (equals) {
+                done.set(true);
+            }
+            return equals;
+        });
+        return done.get();
+    }
+
+    @Override
+    public boolean remove(final MetricID metricID) {
+        return metrics.remove(metricID) != null;
     }
 
     @Override
@@ -185,70 +293,86 @@ public class RegistryImpl extends MetricRegistry {
 
     @Override
     public SortedSet<String> getNames() {
+        return metrics.keySet().stream().map(MetricID::getName).collect(toCollection(TreeSet::new));
+    }
+
+    @Override
+    public SortedSet<MetricID> getMetricIDs() {
         return new TreeSet<>(metrics.keySet());
     }
 
     @Override
-    public SortedMap<String, Gauge> getGauges() {
+    public SortedMap<MetricID, Gauge> getGauges() {
         return getGauges(MetricFilter.ALL);
     }
 
     @Override
-    public SortedMap<String, Gauge> getGauges(final MetricFilter filter) {
+    public SortedMap<MetricID, Gauge> getGauges(final MetricFilter filter) {
         return filterByType(filter, Gauge.class);
     }
 
     @Override
-    public SortedMap<String, Counter> getCounters() {
+    public SortedMap<MetricID, Counter> getCounters() {
         return getCounters(MetricFilter.ALL);
     }
 
     @Override
-    public SortedMap<String, Counter> getCounters(final MetricFilter filter) {
+    public SortedMap<MetricID, Counter> getCounters(final MetricFilter filter) {
         return filterByType(filter, Counter.class);
     }
 
     @Override
-    public SortedMap<String, Histogram> getHistograms() {
+    public SortedMap<MetricID, ConcurrentGauge> getConcurrentGauges() {
+        return getConcurrentGauges(MetricFilter.ALL);
+    }
+
+    @Override
+    public SortedMap<MetricID, ConcurrentGauge> getConcurrentGauges(final MetricFilter filter) {
+        return filterByType(filter, ConcurrentGauge.class);
+    }
+
+    @Override
+    public SortedMap<MetricID, Histogram> getHistograms() {
         return getHistograms(MetricFilter.ALL);
     }
 
     @Override
-    public SortedMap<String, Histogram> getHistograms(final MetricFilter filter) {
+    public SortedMap<MetricID, Histogram> getHistograms(final MetricFilter filter) {
         return filterByType(filter, Histogram.class);
     }
 
     @Override
-    public SortedMap<String, Meter> getMeters() {
+    public SortedMap<MetricID, Meter> getMeters() {
         return getMeters(MetricFilter.ALL);
     }
 
     @Override
-    public SortedMap<String, Meter> getMeters(final MetricFilter filter) {
+    public SortedMap<MetricID, Meter> getMeters(final MetricFilter filter) {
         return filterByType(filter, Meter.class);
     }
 
     @Override
-    public SortedMap<String, Timer> getTimers() {
+    public SortedMap<MetricID, Timer> getTimers() {
         return getTimers(MetricFilter.ALL);
     }
 
     @Override
-    public SortedMap<String, Timer> getTimers(final MetricFilter filter) {
+    public SortedMap<MetricID, Timer> getTimers(final MetricFilter filter) {
         return filterByType(filter, Timer.class);
     }
 
     @Override
-    public Map<String, Metric> getMetrics() {
+    public Map<MetricID, Metric> getMetrics() {
         return metrics.entrySet().stream().collect(toMap(Map.Entry::getKey, e -> e.getValue().metric));
     }
 
     @Override
     public Map<String, Metadata> getMetadata() {
-        return metrics.entrySet().stream().collect(toMap(Map.Entry::getKey, e -> e.getValue().metadata));
+        return metrics.entrySet().stream()
+                .collect(toMap(e -> e.getKey().getName(), e -> e.getValue().metadata, (a, b) -> a));
     }
 
-    private <T extends Metric> SortedMap<String, T> filterByType(final MetricFilter filter, final Class<T> type) {
+    private <T extends Metric> SortedMap<MetricID, T> filterByType(final MetricFilter filter, final Class<T> type) {
         return metrics.entrySet().stream()
                 .filter(it -> type.isInstance(it.getValue().metric))
                 .filter(it -> filter.matches(it.getKey(), it.getValue().metric))
@@ -260,12 +384,12 @@ public class RegistryImpl extends MetricRegistry {
     private static final class Holder<T extends Metric> {
         private final T metric;
         private final Metadata metadata;
+        private final MetricID metricID;
 
-        private Holder(final T metric, final Metadata metadata) {
+        private Holder(final T metric, final Metadata metadata, final MetricID metricID) {
             this.metric = metric;
-            this.metadata = new Metadata(metadata.getName(), metadata.getDisplayName(), metadata.getDescription(), metadata.getTypeRaw(), metadata.getUnit());
-            this.metadata.setReusable(metadata.isReusable());
-            this.metadata.setTags(metadata.getTags());
+            this.metadata = Metadata.builder(metadata).build();
+            this.metricID = metricID;
         }
     }
 }

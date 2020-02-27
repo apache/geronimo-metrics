@@ -2,3 +2,6 @@
 *.iml
 target
 src/test/java/io/*
+.classpath
+.project
+.settings

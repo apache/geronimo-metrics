@@ -19,20 +19,22 @@ package org.apache.geronimo.microprofile.metrics.test;
 import static java.lang.ClassLoader.getSystemClassLoader;
 import static java.lang.String.format;
 import static java.util.Optional.of;
-import static java.util.Optional.ofNullable;
 
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Logger;
 
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.loader.WebappClassLoaderBase;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.meecrowave.Meecrowave;
+import org.apache.meecrowave.arquillian.MeecrowaveConfiguration;
 import org.apache.meecrowave.arquillian.MeecrowaveContainer;
 import org.apache.meecrowave.io.IO;
+import org.jboss.arquillian.container.spi.client.protocol.ProtocolDescription;
 import org.jboss.arquillian.container.spi.client.protocol.metadata.HTTPContext;
 import org.jboss.arquillian.container.spi.client.protocol.metadata.ProtocolMetaData;
 import org.jboss.arquillian.container.spi.client.protocol.metadata.Servlet;
@@ -41,6 +43,12 @@ import org.jboss.shrinkwrap.api.exporter.ZipExporter;
 
 public class TckContainer extends MeecrowaveContainer {
     private final Map<Archive<?>, Runnable> onUnDeploy = new HashMap<>();
+
+    @Override
+    public void setup(final MeecrowaveConfiguration configuration) {
+        super.setup(configuration);
+        getConfiguration().setWatcherBouncing(-1);
+    }
 
     @Override
     public ProtocolMetaData deploy(final Archive<?> archive) {
@@ -77,7 +85,27 @@ public class TckContainer extends MeecrowaveContainer {
 
     @Override
     public void undeploy(final Archive<?> archive) { // we rename the archive so the context so we must align the undeploy
-        ofNullable(onUnDeploy.remove(archive)).ifPresent(Runnable::run);
+        Runnable remove = onUnDeploy.remove(archive);
+        if (remove == null && onUnDeploy.size() == 1) { // assume it is the one
+            final Archive<?> key = onUnDeploy.keySet().iterator().next();
+            remove = onUnDeploy.remove(key);
+        }
+        if (remove != null) {
+            remove.run();
+        } else {
+            Logger.getLogger(getClass().getName())
+                    .warning("Can't find " + archive + " to undeploy it, it can break next tests");
+        }
+    }
+
+    private Meecrowave.Builder getConfiguration() {
+        try {
+            final Field field = getClass().getSuperclass().getDeclaredField("configuration");
+            field.setAccessible(true);
+            return Meecrowave.Builder.class.cast(field.get(this));
+        } catch (final Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private Meecrowave getContainer() {
