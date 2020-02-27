@@ -43,13 +43,16 @@ public class SecurityValidator {
     private List<String> acceptedRoles;
 
     public void init() {
+        acceptedRoles = config("geronimo.metrics.jaxrs.acceptedRoles", identity()).orElse(null);
         acceptedHosts = config("geronimo.metrics.jaxrs.acceptedHosts", value -> {
             if ("<local>".equals(value)) {
                 return LOCAL_MATCHER;
             }
-            return (Predicate<String>) value::equals;
+            return Optional.ofNullable(value)
+                    .filter(v -> v.endsWith("."))
+                    .map(v -> ((Predicate<String>) p -> p.startsWith(v)))
+                    .orElse((Predicate<String>) value::equals);
         }).orElse(singletonList(LOCAL_MATCHER));
-        acceptedRoles = config("geronimo.metrics.jaxrs.acceptedRoles", identity()).orElse(null);
     }
 
     public void checkSecurity(final SecurityContext securityContext, final UriInfo uriInfo) {
@@ -85,4 +88,5 @@ public class SecurityValidator {
     protected String config(final String key) {
         return System.getProperty(key);
     }
+
 }
