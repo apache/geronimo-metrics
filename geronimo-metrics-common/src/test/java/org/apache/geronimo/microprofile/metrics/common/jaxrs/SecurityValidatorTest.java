@@ -94,7 +94,7 @@ public class SecurityValidatorTest {
         }
     };
     private static final UriInfo REMOTE = uri("http://geronimo.somewhere");
-    private static final UriInfo REMOTE_WITH_DOT = uri("http://10.0.0.0");
+    private static final UriInfo REMOTE_IP = uri("http://10.10.10.1");
     private static final UriInfo LOCALHOST = uri("http://localhost");
 
     @Test
@@ -105,7 +105,7 @@ public class SecurityValidatorTest {
     }
 
     @Test
-    public void remoteWithDotValid() {
+    public void remoteWithIpRangeValid() {
         new SecurityValidator() {
             {
                 init();
@@ -113,9 +113,23 @@ public class SecurityValidatorTest {
 
             @Override
             protected String config(final String key) {
-                return key.endsWith("acceptedHosts") ? "10." : null;
+                return key.endsWith("acceptedHosts") ? "[10.10.10.0..10.10.10.255]" : null;
             }
-        }.checkSecurity(ANONYMOUS, REMOTE_WITH_DOT);
+        }.checkSecurity(ANONYMOUS, REMOTE_IP);
+    }
+
+    @Test(expected = WebApplicationException.class)
+    public void remoteWithIpRangeInvalid() {
+        new SecurityValidator() {
+            {
+                init();
+            }
+
+            @Override
+            protected String config(final String key) {
+                return key.endsWith("acceptedHosts") ? "[20.10.10.0..20.10.10.255]" : null;
+            }
+        }.checkSecurity(ANONYMOUS, REMOTE_IP);
     }
 
     @Test(expected = WebApplicationException.class)
@@ -182,7 +196,7 @@ public class SecurityValidatorTest {
     }
 
     @Test
-    public void roleAndHostThatEndsWithDotValid() {
+    public void roleAndIpRangeValid() {
         new SecurityValidator() {
             {
                 init();
@@ -190,13 +204,13 @@ public class SecurityValidatorTest {
 
             @Override
             protected String config(final String key) {
-                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "10." : null;
+                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "[10.10.10.0..10.10.10.255]" : null;
             }
-        }.checkSecurity(ADMIN, REMOTE_WITH_DOT);
+        }.checkSecurity(ADMIN, REMOTE_IP);
     }
 
     @Test(expected = WebApplicationException.class)
-    public void roleAnonymousAndHostThatEndsWithDotValid() {
+    public void roleAndIpRangeInvalid() {
         new SecurityValidator() {
             {
                 init();
@@ -204,9 +218,37 @@ public class SecurityValidatorTest {
 
             @Override
             protected String config(final String key) {
-                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "10." : null;
+                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "[20.10.10.0..20.10.10.255]" : null;
             }
-        }.checkSecurity(LOGGED_NO_ROLE, REMOTE_WITH_DOT);
+        }.checkSecurity(ADMIN, REMOTE_IP);
+    }
+
+    @Test(expected = WebApplicationException.class)
+    public void roleAnonymousAndIpRangeValid() {
+        new SecurityValidator() {
+            {
+                init();
+            }
+
+            @Override
+            protected String config(final String key) {
+                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "[10.10.10.0..10.10.10.255]" : null;
+            }
+        }.checkSecurity(LOGGED_NO_ROLE, REMOTE_IP);
+    }
+
+    @Test(expected = WebApplicationException.class)
+    public void roleAnonymousAndIpRangeInvalid() {
+        new SecurityValidator() {
+            {
+                init();
+            }
+
+            @Override
+            protected String config(final String key) {
+                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "[20.10.10.0..20.10.10.255]" : null;
+            }
+        }.checkSecurity(LOGGED_NO_ROLE, REMOTE_IP);
     }
 
     private static UriInfo uri(final String request) {

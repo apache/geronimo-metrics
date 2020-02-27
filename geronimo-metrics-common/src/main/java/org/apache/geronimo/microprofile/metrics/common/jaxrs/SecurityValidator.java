@@ -16,11 +16,16 @@
  */
 package org.apache.geronimo.microprofile.metrics.common.jaxrs;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 
+import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -43,16 +48,33 @@ public class SecurityValidator {
     private List<String> acceptedRoles;
 
     public void init() {
-        acceptedRoles = config("geronimo.metrics.jaxrs.acceptedRoles", identity()).orElse(null);
         acceptedHosts = config("geronimo.metrics.jaxrs.acceptedHosts", value -> {
             if ("<local>".equals(value)) {
                 return LOCAL_MATCHER;
             }
             return Optional.ofNullable(value)
-                    .filter(v -> v.endsWith("."))
-                    .map(v -> ((Predicate<String>) p -> p.startsWith(v)))
-                    .orElse((Predicate<String>) value::equals);
+                    .filter(range -> range.startsWith("[") && range.endsWith("]"))
+                    .map(v -> ((Predicate<String>) ipToValidate -> {
+                        return Optional.of(value)
+                                .map(range -> range.subSequence(1, range.length() - 1).toString())
+                                .map(rangeWithoutBraces -> rangeWithoutBraces.split("\\.\\."))
+                                .filter(values -> values.length == 2)
+                                .map(rangeArray -> {
+                                  try {
+                                    long addressMin = new BigInteger(InetAddress.getByName(rangeArray[0])
+                                                                                .getAddress()).longValue();
+                                    long addressMax = new BigInteger(InetAddress.getByName(rangeArray[1])
+                                                                                .getAddress()).longValue();
+                                    long addressToValidate = new BigInteger(InetAddress.getByName(ipToValidate)
+                                                                                       .getAddress()).longValue();
+                                    return max(addressMin, addressToValidate) == min(addressToValidate, addressMax);
+                                  } catch (UnknownHostException e) {
+                                    return false;
+                                  }
+                                }).orElse(false);
+                    })).orElse((Predicate<String>) value::equals);
         }).orElse(singletonList(LOCAL_MATCHER));
+        acceptedRoles = config("geronimo.metrics.jaxrs.acceptedRoles", identity()).orElse(null);
     }
 
     public void checkSecurity(final SecurityContext securityContext, final UriInfo uriInfo) {
