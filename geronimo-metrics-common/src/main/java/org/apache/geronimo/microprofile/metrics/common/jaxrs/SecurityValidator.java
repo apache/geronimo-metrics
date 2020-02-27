@@ -16,8 +16,6 @@
  */
 package org.apache.geronimo.microprofile.metrics.common.jaxrs;
 
-import static java.lang.Math.max;
-import static java.lang.Math.min;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 import static java.util.function.Function.identity;
@@ -61,13 +59,10 @@ public class SecurityValidator {
                                 .filter(values -> values.length == 2)
                                 .map(rangeArray -> {
                                   try {
-                                    long addressMin = new BigInteger(InetAddress.getByName(rangeArray[0])
-                                                                                .getAddress()).longValue();
-                                    long addressMax = new BigInteger(InetAddress.getByName(rangeArray[1])
-                                                                                .getAddress()).longValue();
-                                    long addressToValidate = new BigInteger(InetAddress.getByName(ipToValidate)
-                                                                                       .getAddress()).longValue();
-                                    return max(addressMin, addressToValidate) == min(addressToValidate, addressMax);
+                                    BigInteger addressMin = new BigInteger(InetAddress.getByName(rangeArray[0]).getAddress());
+                                    BigInteger addressMax = new BigInteger(InetAddress.getByName(rangeArray[1]).getAddress());
+                                    BigInteger addressToValidate = new BigInteger(InetAddress.getByName(ipToValidate).getAddress());
+                                    return addressMin.max(addressToValidate).equals(addressMax.min(addressToValidate));
                                   } catch (UnknownHostException e) {
                                     return false;
                                   }
