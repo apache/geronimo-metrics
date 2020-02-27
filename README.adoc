@@ -42,7 +42,7 @@ At least one must match to let the request pass, if none is set this validation 
 Note that a request without a principal will lead to a HTTP 401 whereas a request with a principal but not the right role will issue a HTTP 403.
 
 The host validation will use the JAX-RS `UriInfo#getRequestUri`.
-It relies on the system property `geronimo.metrics.jaxrs.acceptedHosts` and it takes a comma separated list of roles.
+It relies on the system property `geronimo.metrics.jaxrs.acceptedHosts` and it takes a comma separated list of hosts.
 At least one must match to let the request pass, if none is set this validation is ignored.
 The `<local>` value is an alias for `127.x.y.z` or `1::x` IP or `localhost`.
 
