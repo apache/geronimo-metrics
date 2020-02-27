@@ -27,7 +27,6 @@ import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
 
-
 import org.junit.Test;
 
 public class SecurityValidatorTest {
@@ -95,6 +94,7 @@ public class SecurityValidatorTest {
         }
     };
     private static final UriInfo REMOTE = uri("http://geronimo.somewhere");
+    private static final UriInfo REMOTE_WITH_DOT = uri("http://10.0.0.0");
     private static final UriInfo LOCALHOST = uri("http://localhost");
 
     @Test
@@ -102,6 +102,20 @@ public class SecurityValidatorTest {
         new SecurityValidator() {{
             init();
         }}.checkSecurity(ANONYMOUS, LOCALHOST);
+    }
+
+    @Test
+    public void remoteWithDotValid() {
+        new SecurityValidator() {
+            {
+                init();
+            }
+
+            @Override
+            protected String config(final String key) {
+                return key.endsWith("acceptedHosts") ? "10." : null;
+            }
+        }.checkSecurity(ANONYMOUS, REMOTE_WITH_DOT);
     }
 
     @Test(expected = WebApplicationException.class)
@@ -165,6 +179,34 @@ public class SecurityValidatorTest {
                 return key.endsWith("acceptedRoles") ? "admin" : "geronimo.somewhere";
             }
         }.checkSecurity(ADMIN, REMOTE);
+    }
+
+    @Test
+    public void roleAndHostThatEndsWithDotValid() {
+        new SecurityValidator() {
+            {
+                init();
+            }
+
+            @Override
+            protected String config(final String key) {
+                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "10." : null;
+            }
+        }.checkSecurity(ADMIN, REMOTE_WITH_DOT);
+    }
+
+    @Test(expected = WebApplicationException.class)
+    public void roleAnonymousAndHostThatEndsWithDotValid() {
+        new SecurityValidator() {
+            {
+                init();
+            }
+
+            @Override
+            protected String config(final String key) {
+                return key.endsWith("acceptedRoles") ? "admin" : key.endsWith("acceptedHosts") ? "10." : null;
+            }
+        }.checkSecurity(LOGGED_NO_ROLE, REMOTE_WITH_DOT);
     }
 
     private static UriInfo uri(final String request) {
