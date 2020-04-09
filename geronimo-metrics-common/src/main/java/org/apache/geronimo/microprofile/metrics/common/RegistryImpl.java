@@ -255,6 +255,11 @@ public class RegistryImpl implements MetricRegistry {
     }
 
     @Override
+    public SimpleTimer simpleTimer(final String name, final Tag... tags) {
+        return simpleTimer(Metadata.builder().withName(name).withType(MetricType.SIMPLE_TIMER).build(), tags);
+    }
+
+    @Override
     public SimpleTimer simpleTimer(final Metadata metadata, final Tag... tags) {
         final MetricID metricID = new MetricID(metadata.getName(), tags);
         Holder<? extends Metric> holder = metrics.get(metricID);
