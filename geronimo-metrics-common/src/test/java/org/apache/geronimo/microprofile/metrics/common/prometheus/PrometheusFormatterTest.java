@@ -19,7 +19,6 @@ package org.apache.geronimo.microprofile.metrics.common.prometheus;
 import static java.util.Collections.singletonMap;
 import static org.junit.Assert.assertEquals;
 
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -27,13 +26,14 @@ import java.util.Properties;
 import org.apache.geronimo.microprofile.metrics.common.RegistryImpl;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Metric;
+import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.junit.Test;
 
 public class PrometheusFormatterTest {
     @Test
     public void rename() {
         final PrometheusFormatter prometheusFormatter = new PrometheusFormatter().enableOverriding();
-        final RegistryImpl registry = new RegistryImpl();
+        final RegistryImpl registry = new RegistryImpl(MetricRegistry.Type.APPLICATION);
         final Map<String, Metric> metrics = singletonMap("myMetric", (Gauge<Long>) () -> 1234L);
         metrics.forEach(registry::register);
         assertEquals(
@@ -59,7 +59,7 @@ public class PrometheusFormatterTest {
     @Test
     public void filter() {
         final PrometheusFormatter prometheusFormatter = new PrometheusFormatter().enableOverriding();
-        final RegistryImpl registry = new RegistryImpl();
+        final RegistryImpl registry = new RegistryImpl(MetricRegistry.Type.APPLICATION);
         final Map<String, Metric> metrics = new LinkedHashMap<>();
         metrics.put("myMetric1", (Gauge<Long>) () -> 1234L);
         metrics.put("myMetric2", (Gauge<Long>) () -> 1235L);

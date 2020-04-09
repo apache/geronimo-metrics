@@ -22,6 +22,7 @@ import org.apache.geronimo.microprofile.metrics.common.jaxrs.MetricsEndpoints;
 import org.apache.geronimo.microprofile.metrics.common.jaxrs.SecurityValidator;
 import org.apache.geronimo.microprofile.metrics.common.prometheus.PrometheusFormatter;
 import org.eclipse.microprofile.metrics.Gauge;
+import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.junit.Test;
 
 import javax.ws.rs.core.SecurityContext;
@@ -34,7 +35,7 @@ public class JsonMetricTest {
 
     @Test
     public void testJsonGaugeValue() {
-        final RegistryImpl registry = new RegistryImpl();
+        final RegistryImpl registry = new RegistryImpl(MetricRegistry.Type.APPLICATION);
         registry.register("foo", (Gauge<Long>) () -> 1L);
 
         final MetricsEndpoints endpoints = new MetricsEndpoints();

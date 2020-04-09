@@ -16,12 +16,22 @@
  */
 package org.apache.geronimo.microprofile.metrics.common.prometheus;
 
-import static java.lang.Math.pow;
-import static java.util.Optional.of;
-import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
-import static java.util.stream.Collectors.toSet;
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
+import org.eclipse.microprofile.metrics.Counter;
+import org.eclipse.microprofile.metrics.Gauge;
+import org.eclipse.microprofile.metrics.Histogram;
+import org.eclipse.microprofile.metrics.Metadata;
+import org.eclipse.microprofile.metrics.Meter;
+import org.eclipse.microprofile.metrics.Metered;
+import org.eclipse.microprofile.metrics.Metric;
+import org.eclipse.microprofile.metrics.MetricID;
+import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.MetricType;
+import org.eclipse.microprofile.metrics.MetricUnits;
+import org.eclipse.microprofile.metrics.SimpleTimer;
+import org.eclipse.microprofile.metrics.Snapshot;
+import org.eclipse.microprofile.metrics.Tag;
+import org.eclipse.microprofile.metrics.Timer;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,21 +46,12 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import org.eclipse.microprofile.metrics.ConcurrentGauge;
-import org.eclipse.microprofile.metrics.Counter;
-import org.eclipse.microprofile.metrics.Gauge;
-import org.eclipse.microprofile.metrics.Histogram;
-import org.eclipse.microprofile.metrics.Metadata;
-import org.eclipse.microprofile.metrics.Meter;
-import org.eclipse.microprofile.metrics.Metered;
-import org.eclipse.microprofile.metrics.Metric;
-import org.eclipse.microprofile.metrics.MetricID;
-import org.eclipse.microprofile.metrics.MetricRegistry;
-import org.eclipse.microprofile.metrics.MetricType;
-import org.eclipse.microprofile.metrics.MetricUnits;
-import org.eclipse.microprofile.metrics.Snapshot;
-import org.eclipse.microprofile.metrics.Tag;
-import org.eclipse.microprofile.metrics.Timer;
+import static java.lang.Math.pow;
+import static java.util.Optional.of;
+import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 
 // note: we keep this name for backward compat but this is now an "openmetrics" formatter
 // todo: cache all the keys, can easily be done decorating the registry and enriching metadata (ExtendedMetadata/MetricsID)
@@ -161,6 +162,12 @@ public class PrometheusFormatter {
                             final Timer timer = Timer.class.cast(entry.metric);
                             return timer(registryKey, entry, tagsAsList, keyBase, keyUnit, timer);
                         }
+                        case SIMPLE_TIMER: {
+                            final String keyBase = toPrometheus(entry.metadata);
+                            final String keyUnit = toUnitSuffix(entry.metadata, false);
+                            final SimpleTimer timer = SimpleTimer.class.cast(entry.metric);
+                            return simpleTimer(registryKey, entry, tagsAsList, keyBase, keyUnit, timer);
+                        }
                         case HISTOGRAM:
                             final String keyBase = toPrometheus(entry.metadata);
                             final String keyUnit = toUnitSuffix(entry.metadata, false);
@@ -186,6 +193,12 @@ public class PrometheusFormatter {
                 .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), entry.metadata, tagsAsList))
                 .append(meter(registryKey, entry, tagsAsList, timer, keyBase))
                 .append(toPrometheus(registryKey, keyBase, keyUnit, timer.getSnapshot(), entry.metadata, tagsAsList));
+    }
+
+    private StringBuilder simpleTimer(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final SimpleTimer timer) {
+        return new StringBuilder()
+                .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
+                .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), entry.metadata, tagsAsList));
     }
 
     private StringBuilder meter(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final Metered meter, final String keyBase) {

@@ -16,11 +16,11 @@
  */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
-import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.SimpleTimer;
 import org.eclipse.microprofile.metrics.Tag;
-import org.eclipse.microprofile.metrics.annotation.Counted;
+import org.eclipse.microprofile.metrics.annotation.SimplyTimed;
 
 import javax.annotation.Priority;
 import javax.enterprise.inject.Intercepted;
@@ -41,10 +41,10 @@ import java.util.stream.Stream;
 
 import static java.util.Optional.ofNullable;
 
-@Counted
+@SimplyTimed
 @Interceptor
 @Priority(Interceptor.Priority.LIBRARY_BEFORE)
-public class CountedInterceptor implements Serializable {
+public class SimplyTimedInterceptor implements Serializable {
     @Inject
     private MetricRegistry registry;
 
@@ -58,62 +58,44 @@ public class CountedInterceptor implements Serializable {
     @Inject
     private MetricsExtension extension;
 
-    private transient volatile ConcurrentMap<Executable, Meta> counters = new ConcurrentHashMap<>();
+    private transient volatile ConcurrentMap<Executable, SimpleTimer> timers = new ConcurrentHashMap<>();
 
     @AroundConstruct
     public Object onConstructor(final InvocationContext context) throws Exception {
-        return invoke(context, context.getConstructor());
+        return findTimer(context.getConstructor()).time(context::proceed);
     }
 
     @AroundInvoke
     public Object onMethod(final InvocationContext context) throws Exception {
-        return invoke(context, context.getMethod());
+        return findTimer(context.getMethod()).time(context::proceed);
     }
 
-    private Object invoke(final InvocationContext context, final Executable executable) throws Exception {
-        final Meta counter = findCounter(executable);
-        counter.counter.inc();
-        return context.proceed();
-    }
-
-    private Meta findCounter(final Executable executable) {
-        if (counters == null) {
+    private SimpleTimer findTimer(final Executable executable) {
+        if (timers == null) {
             synchronized (this) {
-                if (counters == null) {
-                    counters = new ConcurrentHashMap<>();
+                if (timers == null) {
+                    timers = new ConcurrentHashMap<>();
                 }
             }
         }
-        Meta meta = counters.get(executable);
-        if (meta == null) {
+        SimpleTimer timer = timers.get(executable);
+        if (timer == null) {
             final AnnotatedType<?> type = beanManager.createAnnotatedType(bean.getBeanClass());
-            final Counted counted = Stream.concat(type.getMethods().stream(), type.getConstructors().stream())
+            final SimplyTimed timed = Stream.concat(type.getMethods().stream(), type.getConstructors().stream())
                     .filter(it -> it.getJavaMember().equals(executable))
                     .findFirst()
-                    .map(m -> m.getAnnotation(Counted.class))
+                    .map(m -> m.getAnnotation(SimplyTimed.class))
                     .orElse(null);
             final String name = Names.findName(
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
-                    executable, counted == null ? null : counted.name(),
-                    counted != null && counted.absolute(),
-                    ofNullable(extension.getAnnotation(type, Counted.class)).map(Counted::name).orElse(""));
-
-            final Counter counter = registry.getCounter(
-                    new MetricID(name, counted == null ? new Tag[0] : extension.createTags(counted.tags())));
-            if (counter == null) {
-                throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
+                    executable, timed == null ? null : timed.name(), timed != null && timed.absolute(),
+                    ofNullable(extension.getAnnotation(type, SimplyTimed.class)).map(SimplyTimed::name).orElse(""));
+            timer = registry.getSimpleTimer(new MetricID(name, timed == null ? new Tag[0] : extension.createTags(timed.tags())));
+            if (timer == null) {
+                throw new IllegalStateException("No timer with name [" + name + "] found in registry [" + registry + "]");
             }
-            meta = new Meta(counter);
-            counters.putIfAbsent(executable, meta);
+            timers.putIfAbsent(executable, timer);
         }
-        return meta;
-    }
-
-    private static final class Meta {
-        private final Counter counter;
-
-        private Meta(final Counter counter) {
-            this.counter = counter;
-        }
+        return timer;
     }
 }

@@ -16,19 +16,6 @@
  */
 package org.apache.geronimo.microprofile.metrics.common;
 
-import static java.util.stream.Collectors.toCollection;
-import static java.util.stream.Collectors.toMap;
-
-import java.util.Map;
-import java.util.Objects;
-import java.util.SortedMap;
-import java.util.SortedSet;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
@@ -41,13 +28,32 @@ import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.MetricType;
 import org.eclipse.microprofile.metrics.MetricUnits;
+import org.eclipse.microprofile.metrics.SimpleTimer;
 import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
 
-public class RegistryImpl extends MetricRegistry {
+import java.util.Map;
+import java.util.Objects;
+import java.util.SortedMap;
+import java.util.SortedSet;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static java.util.stream.Collectors.toCollection;
+import static java.util.stream.Collectors.toMap;
+
+public class RegistryImpl implements MetricRegistry {
     private static final Tag[] NO_TAG = new Tag[0];
 
+    private final Type type;
     private final ConcurrentMap<MetricID, Holder<? extends Metric>> metrics = new ConcurrentHashMap<>();
+
+    public RegistryImpl(final Type type) {
+        this.type = type;
+    }
 
     @Override
     public <T extends Metric> T register(final Metadata metadata, final T metric) throws IllegalArgumentException {
@@ -124,6 +130,11 @@ public class RegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public ConcurrentGauge concurrentGauge(final MetricID metricID) {
+        return concurrentGauge(metricID.getName(), metricID.getTagsAsArray());
+    }
+
+    @Override
     public ConcurrentGauge concurrentGauge(final Metadata metadata) {
         return concurrentGauge(metadata, NO_TAG);
     }
@@ -148,6 +159,11 @@ public class RegistryImpl extends MetricRegistry {
             throw new IllegalArgumentException(holder.metric + " is not a counter");
         }
         return ConcurrentGauge.class.cast(holder.metric);
+    }
+
+    @Override
+    public Gauge<?> gauge(final MetricID metricID, final Gauge<?> gauge) {
+        return gauge(metricID.getName(), gauge, metricID.getTagsAsArray());
     }
 
     @Override
@@ -229,6 +245,49 @@ public class RegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public SimpleTimer simpleTimer(final MetricID metricID) {
+        return simpleTimer(metricID.getName(), metricID.getTagsAsArray());
+    }
+
+    @Override
+    public SimpleTimer simpleTimer(final Metadata metadata) {
+        return simpleTimer(metadata, NO_TAG);
+    }
+
+    @Override
+    public SimpleTimer simpleTimer(final Metadata metadata, final Tag... tags) {
+        final MetricID metricID = new MetricID(metadata.getName(), tags);
+        Holder<? extends Metric> holder = metrics.get(metricID);
+        if (holder == null) {
+            holder = new Holder<>(new SimpleTimerImpl(metadata.getUnit().orElse(MetricUnits.NONE)), metadata, metricID);
+            final Holder<? extends Metric> existing = metrics.putIfAbsent(metricID, holder);
+            if (existing != null) {
+                holder = existing;
+            }
+        } else if (!metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and is not set as reusable");
+        } else if (!holder.metadata.isReusable()) {
+            throw new IllegalArgumentException("Metric " + metadata.getName() + " already exists and was not set as reusable");
+        }
+        if (!SimpleTimer.class.isInstance(holder.metric)) {
+            throw new IllegalArgumentException(holder.metric + " is not a timer");
+        }
+        return SimpleTimer.class.cast(holder.metric);
+    }
+
+    @Override
+    public Metric getMetric(final MetricID metricID) {
+        final Holder<? extends Metric> holder = metrics.get(metricID);
+        return holder == null ? null : holder.metric;
+    }
+
+    @Override
+    public Metadata getMetadata(final String name) {
+        final Holder<? extends Metric> holder = metrics.get(new MetricID(name));
+        return holder == null ? null : holder.metadata;
+    }
+
+    @Override
     public Counter counter(final String name) {
         return counter(Metadata.builder().withName(name).withType(MetricType.COUNTER).build(), NO_TAG);
     }
@@ -236,6 +295,11 @@ public class RegistryImpl extends MetricRegistry {
     @Override
     public Counter counter(final String name, final Tag... tags) {
         return counter(Metadata.builder().withName(name).withType(MetricType.COUNTER).build(), tags);
+    }
+
+    @Override
+    public Counter counter(final MetricID metricID) {
+        return counter(metricID.getName(), metricID.getTagsAsArray());
     }
 
     @Override
@@ -249,6 +313,11 @@ public class RegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public Histogram histogram(final MetricID metricID) {
+        return histogram(metricID.getName(), metricID.getTagsAsArray());
+    }
+
+    @Override
     public Meter meter(final String name) {
         return meter(Metadata.builder().withName(name).withType(MetricType.METERED).build());
     }
@@ -259,6 +328,11 @@ public class RegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public Meter meter(final MetricID metricID) {
+        return meter(metricID.getName(), metricID.getTagsAsArray());
+    }
+
+    @Override
     public Timer timer(final String name) {
         return timer(Metadata.builder().withName(name).withType(MetricType.TIMER).build());
     }
@@ -266,6 +340,11 @@ public class RegistryImpl extends MetricRegistry {
     @Override
     public Timer timer(final String name, final Tag... tags) {
         return timer(Metadata.builder().withName(name).withType(MetricType.TIMER).build(), tags);
+    }
+
+    @Override
+    public Timer timer(final MetricID metricID) {
+        return timer(metricID.getName(), metricID.getTagsAsArray());
     }
 
     @Override
@@ -362,6 +441,21 @@ public class RegistryImpl extends MetricRegistry {
     }
 
     @Override
+    public SortedMap<MetricID, SimpleTimer> getSimpleTimers() {
+        return filterByType(MetricFilter.ALL, SimpleTimer.class);
+    }
+
+    @Override
+    public SortedMap<MetricID, SimpleTimer> getSimpleTimers(final MetricFilter filter) {
+        return filterByType(filter, SimpleTimer.class);
+    }
+
+    @Override
+    public SortedMap<MetricID, Metric> getMetrics(final MetricFilter metricFilter) {
+        return filterByType(metricFilter, Metric.class);
+    }
+
+    @Override
     public Map<MetricID, Metric> getMetrics() {
         return metrics.entrySet().stream().collect(toMap(Map.Entry::getKey, e -> e.getValue().metric));
     }
@@ -370,6 +464,11 @@ public class RegistryImpl extends MetricRegistry {
     public Map<String, Metadata> getMetadata() {
         return metrics.entrySet().stream()
                 .collect(toMap(e -> e.getKey().getName(), e -> e.getValue().metadata, (a, b) -> a));
+    }
+
+    @Override
+    public Type getType() {
+        return type;
     }
 
     private <T extends Metric> SortedMap<MetricID, T> filterByType(final MetricFilter filter, final Class<T> type) {

@@ -16,14 +16,10 @@
  */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
-import static java.util.Optional.ofNullable;
-
-import java.io.Serializable;
-import java.lang.reflect.Executable;
-import java.lang.reflect.Modifier;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Stream;
+import org.eclipse.microprofile.metrics.ConcurrentGauge;
+import org.eclipse.microprofile.metrics.MetricID;
+import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.Tag;
 
 import javax.annotation.Priority;
 import javax.enterprise.inject.Intercepted;
@@ -35,11 +31,14 @@ import javax.interceptor.AroundConstruct;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
+import java.io.Serializable;
+import java.lang.reflect.Executable;
+import java.lang.reflect.Modifier;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Stream;
 
-import org.eclipse.microprofile.metrics.ConcurrentGauge;
-import org.eclipse.microprofile.metrics.MetricID;
-import org.eclipse.microprofile.metrics.MetricRegistry;
-import org.eclipse.microprofile.metrics.Tag;
+import static java.util.Optional.ofNullable;
 
 @Interceptor
 @Priority(Interceptor.Priority.LIBRARY_BEFORE)
@@ -100,12 +99,12 @@ public class ConcurrentGaugeInterceptor implements Serializable {
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, concurrentGauge == null ? null : concurrentGauge.name(),
                     concurrentGauge != null && concurrentGauge.absolute(),
-                    ofNullable(type.getAnnotation(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class))
+                    ofNullable(extension.getAnnotation(type, org.eclipse.microprofile.metrics.annotation.ConcurrentGauge.class))
                             .map(org.eclipse.microprofile.metrics.annotation.ConcurrentGauge::name)
                             .orElse(""));
 
-            final ConcurrentGauge gauge = ConcurrentGauge.class.cast(registry.getMetrics().get(
-                    new MetricID(name, concurrentGauge == null ? new Tag[0] : extension.createTags(concurrentGauge.tags()))));
+            final ConcurrentGauge gauge = registry.getConcurrentGauge(
+                    new MetricID(name, concurrentGauge == null ? new Tag[0] : extension.createTags(concurrentGauge.tags())));
             if (gauge == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }

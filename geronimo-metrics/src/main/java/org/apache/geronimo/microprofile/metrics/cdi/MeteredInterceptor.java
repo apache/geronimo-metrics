@@ -16,14 +16,11 @@
  */
 package org.apache.geronimo.microprofile.metrics.cdi;
 
-import static java.util.Optional.ofNullable;
-
-import java.io.Serializable;
-import java.lang.reflect.Executable;
-import java.lang.reflect.Modifier;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Stream;
+import org.eclipse.microprofile.metrics.Meter;
+import org.eclipse.microprofile.metrics.MetricID;
+import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.Tag;
+import org.eclipse.microprofile.metrics.annotation.Metered;
 
 import javax.annotation.Priority;
 import javax.enterprise.inject.Intercepted;
@@ -35,12 +32,14 @@ import javax.interceptor.AroundConstruct;
 import javax.interceptor.AroundInvoke;
 import javax.interceptor.Interceptor;
 import javax.interceptor.InvocationContext;
+import java.io.Serializable;
+import java.lang.reflect.Executable;
+import java.lang.reflect.Modifier;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Stream;
 
-import org.eclipse.microprofile.metrics.Meter;
-import org.eclipse.microprofile.metrics.MetricID;
-import org.eclipse.microprofile.metrics.MetricRegistry;
-import org.eclipse.microprofile.metrics.Tag;
-import org.eclipse.microprofile.metrics.annotation.Metered;
+import static java.util.Optional.ofNullable;
 
 @Metered
 @Interceptor
@@ -93,10 +92,10 @@ public class MeteredInterceptor implements Serializable {
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, metered == null ? null : metered.name(),
                     metered != null && metered.absolute(),
-                    ofNullable(type.getAnnotation(Metered.class)).map(Metered::name).orElse(""));
+                    ofNullable(extension.getAnnotation(type, Metered.class)).map(Metered::name).orElse(""));
 
-            meter = Meter.class.cast(registry.getMetrics().get(
-                    new MetricID(name, metered == null ? new Tag[0] : extension.createTags(metered.tags()))));
+            meter = registry.getMeter(
+                    new MetricID(name, metered == null ? new Tag[0] : extension.createTags(metered.tags())));
             if (meter == null) {
                 throw new IllegalStateException("No meter with name [" + name + "] found in registry [" + registry + "]");
             }

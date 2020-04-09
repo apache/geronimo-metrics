@@ -90,9 +90,8 @@ public class TimedInterceptor implements Serializable {
             final String name = Names.findName(
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, timed == null ? null : timed.name(), timed != null && timed.absolute(),
-                    ofNullable(type.getAnnotation(Timed.class)).map(Timed::name).orElse(""));
-            timer = Timer.class.cast(registry.getMetrics().get(
-                    new MetricID(name, timed == null ? new Tag[0] : extension.createTags(timed.tags()))));
+                    ofNullable(extension.getAnnotation(type, Timed.class)).map(Timed::name).orElse(""));
+            timer = registry.getTimer(new MetricID(name, timed == null ? new Tag[0] : extension.createTags(timed.tags())));
             if (timer == null) {
                 throw new IllegalStateException("No timer with name [" + name + "] found in registry [" + registry + "]");
             }

@@ -16,16 +16,16 @@
  */
 package org.apache.geronimo.microprofile.metrics.common;
 
-import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
-
-import javax.json.bind.annotation.JsonbProperty;
-import javax.json.bind.annotation.JsonbTransient;
-
 import org.eclipse.microprofile.metrics.Histogram;
 import org.eclipse.microprofile.metrics.Meter;
 import org.eclipse.microprofile.metrics.Snapshot;
 import org.eclipse.microprofile.metrics.Timer;
+
+import javax.json.bind.annotation.JsonbProperty;
+import javax.json.bind.annotation.JsonbTransient;
+import java.time.Duration;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 
 public class TimerImpl implements Timer {
     private final Histogram histogram;
@@ -37,11 +37,12 @@ public class TimerImpl implements Timer {
     }
 
     @Override
-    public void update(final long duration, final TimeUnit unit) {
-        if (duration >= 0) {
-            histogram.update(unit.toNanos(duration));
-            meter.mark();
+    public void update(final Duration duration) {
+        if (duration.isNegative() || duration.isZero()) {
+            return;
         }
+        histogram.update(duration.toNanos());
+        meter.mark();
     }
 
     @Override
@@ -68,6 +69,11 @@ public class TimerImpl implements Timer {
     @Override
     public Context time() {
         return new ContextImpl();
+    }
+
+    @Override
+    public Duration getElapsedTime() {
+        return null;
     }
 
     @Override
@@ -150,7 +156,7 @@ public class TimerImpl implements Timer {
         @Override
         public long stop() {
             final long duration = System.nanoTime() - start;
-            update(duration, TimeUnit.NANOSECONDS);
+            update(Duration.ofNanos(duration));
             return duration;
         }
 
