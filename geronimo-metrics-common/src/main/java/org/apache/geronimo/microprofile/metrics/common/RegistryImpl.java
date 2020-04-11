@@ -167,6 +167,11 @@ public class RegistryImpl implements MetricRegistry {
     }
 
     @Override
+    public Gauge<?> gauge(final String name, final Gauge<?> gauge, final Tag...tags) {
+        return register(Metadata.builder().reusable().withName(name).build(), gauge, tags);
+    }
+
+    @Override
     public Histogram histogram(final Metadata metadata) {
         return histogram(metadata, NO_TAG);
     }

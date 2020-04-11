@@ -26,10 +26,12 @@ import javax.json.bind.annotation.JsonbTransient;
 import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 
 public class TimerImpl implements Timer {
     private final Histogram histogram;
     private final Meter meter;
+    private final LongAdder elapsed = new LongAdder();
 
     public TimerImpl(final String unit) {
         this.histogram = new HistogramImpl(unit);
@@ -43,6 +45,7 @@ public class TimerImpl implements Timer {
         }
         histogram.update(duration.toNanos());
         meter.mark();
+        elapsed.add(duration.toNanos());
     }
 
     @Override
@@ -73,7 +76,7 @@ public class TimerImpl implements Timer {
 
     @Override
     public Duration getElapsedTime() {
-        return null;
+        return Duration.ofNanos(elapsed.longValue());
     }
 
     @Override

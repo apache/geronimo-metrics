@@ -45,10 +45,12 @@ import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.event.Observes;
 import javax.enterprise.inject.Any;
 import javax.enterprise.inject.Default;
+import javax.enterprise.inject.Produces;
 import javax.enterprise.inject.Stereotype;
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
 import javax.enterprise.inject.spi.AfterDeploymentValidation;
 import javax.enterprise.inject.spi.Annotated;
+import javax.enterprise.inject.spi.AnnotatedCallable;
 import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
@@ -155,7 +157,7 @@ public class MetricsExtension implements Extension {
             return;
         }
         final Class<?> clazz = findClass(processProducerMethod.getAnnotated().getBaseType());
-        if (clazz == null || !Metric.class.isAssignableFrom(clazz)) {
+        if (clazz == null || !Gauge.class.isAssignableFrom(clazz)) {
             return;
         }
         final Member javaMember = processProducerMethod.getAnnotatedProducerMethod().getJavaMember();
@@ -248,114 +250,8 @@ public class MetricsExtension implements Extension {
         Stream.concat(annotatedType.getMethods().stream(), annotatedType.getConstructors().stream())
                 .filter(method -> method.getJavaMember().getDeclaringClass() == javaClass || Modifier.isAbstract(method.getJavaMember().getDeclaringClass().getModifiers()))
                 .filter(method -> !method.getJavaMember().isSynthetic() && !Modifier.isPrivate(method.getJavaMember().getModifiers()))
-                .forEach(method -> {
-                    final Member javaMember = method.getJavaMember();
-
-                    final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() ->
-                            getAnnotation(annotatedType, Counted.class));
-                    if (counted != null) {
-                        final boolean isMethod = method.isAnnotationPresent(Counted.class);
-                        final String name = Names.findName(javaClass, javaMember, isMethod ? counted.name() : "", counted.absolute(),
-                                ofNullable(getAnnotation(annotatedType, Counted.class)).map(Counted::name).orElse(""));
-                        final Metadata metadata = Metadata.builder()
-                                .withName(name)
-                                .withDisplayName(counted.displayName())
-                                .withDescription(counted.description())
-                                .withType(MetricType.COUNTER)
-                                .withUnit(counted.unit())
-                                .build();
-                        final MetricID metricID = new MetricID(name, createTags(counted.tags()));
-                        addRegistration(metadata, metricID, counted.reusable() || !isMethod);
-                    }
-
-                    final ConcurrentGauge concurrentGauge = ofNullable(method.getAnnotation(ConcurrentGauge.class)).orElseGet(() ->
-                            getAnnotation(annotatedType, ConcurrentGauge.class));
-                    if (concurrentGauge != null) {
-                        final boolean isMethod = method.isAnnotationPresent(ConcurrentGauge.class);
-                        final String name = Names.findName(javaClass, javaMember, isMethod ? concurrentGauge.name() : "", concurrentGauge.absolute(),
-                                ofNullable(getAnnotation(annotatedType, ConcurrentGauge.class)).map(ConcurrentGauge::name).orElse(""));
-                        final Metadata metadata = Metadata.builder()
-                                .withName(name)
-                                .withDisplayName(concurrentGauge.displayName())
-                                .withDescription(concurrentGauge.description())
-                                .withType(MetricType.CONCURRENT_GAUGE)
-                                .withUnit(concurrentGauge.unit())
-                                .build();
-                        final MetricID metricID = new MetricID(name, createTags(concurrentGauge.tags()));
-                        addRegistration(metadata, metricID, concurrentGauge.reusable() || !isMethod);
-                    }
-
-                    final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> getAnnotation(annotatedType, Timed.class));
-                    if (timed != null) {
-                        final boolean isMethod = method.isAnnotationPresent(Timed.class);
-                        final String name = Names.findName(javaClass, javaMember, isMethod ? timed.name() : "", timed.absolute(),
-                                ofNullable(getAnnotation(annotatedType, Timed.class)).map(Timed::name).orElse(""));
-                        final Metadata metadata = Metadata.builder()
-                                .withName(name)
-                                .withDisplayName(timed.displayName())
-                                .withDescription(timed.description())
-                                .withType(MetricType.TIMER)
-                                .withUnit(timed.unit())
-                                .build();
-                        final MetricID metricID = new MetricID(name, createTags(timed.tags()));
-                        addRegistration(metadata, metricID, timed.reusable() || !isMethod);
-                    }
-
-                    final SimplyTimed simplyTimed = ofNullable(method.getAnnotation(SimplyTimed.class)).orElseGet(() -> getAnnotation(annotatedType, SimplyTimed.class));
-                    if (simplyTimed != null) {
-                        final boolean isMethod = method.isAnnotationPresent(SimplyTimed.class);
-                        final String name = Names.findName(javaClass, javaMember, isMethod ? simplyTimed.name() : "", simplyTimed.absolute(),
-                                ofNullable(getAnnotation(annotatedType, SimplyTimed.class)).map(SimplyTimed::name).orElse(""));
-                        final Metadata metadata = Metadata.builder()
-                                .withName(name)
-                                .withDisplayName(simplyTimed.displayName())
-                                .withDescription(simplyTimed.description())
-                                .withType(MetricType.SIMPLE_TIMER)
-                                .withUnit(simplyTimed.unit())
-                                .build();
-                        final MetricID metricID = new MetricID(name, createTags(simplyTimed.tags()));
-                        addRegistration(metadata, metricID, simplyTimed.reusable() || !isMethod);
-                    }
-
-                    final org.eclipse.microprofile.metrics.annotation.Metered metered = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Metered.class))
-                            .orElseGet(() -> getAnnotation(annotatedType, org.eclipse.microprofile.metrics.annotation.Metered.class));
-                    if (metered != null) {
-                        final boolean isMethod = method.isAnnotationPresent(Metered.class);
-                        final String name = Names.findName(javaClass, javaMember, isMethod ? metered.name() : "", metered.absolute(),
-                                ofNullable(getAnnotation(annotatedType, Metered.class)).map(Metered::name).orElse(""));
-                        final Metadata metadata = Metadata.builder()
-                                .withName(name)
-                                .withDisplayName(metered.displayName())
-                                .withDescription(metered.description())
-                                .withType(MetricType.METERED)
-                                .withUnit(metered.unit())
-                                .build();
-                        final MetricID metricID = new MetricID(name, createTags(metered.tags()));
-                        addRegistration(metadata, metricID, metered.reusable() || !isMethod);
-                    }
-
-                    final org.eclipse.microprofile.metrics.annotation.Gauge gauge = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class))
-                            .orElseGet(() -> getAnnotation(annotatedType, org.eclipse.microprofile.metrics.annotation.Gauge.class));
-                    if (gauge != null) {
-                        final String name = Names.findName(
-                                javaClass, javaMember, gauge.name(), gauge.absolute(),
-                                ofNullable(getAnnotation(annotatedType, org.eclipse.microprofile.metrics.annotation.Gauge.class)).map(org.eclipse.microprofile.metrics.annotation.Gauge::name).orElse(""));
-                        final Metadata metadata = Metadata.builder()
-                                .withName(name)
-                                .withDisplayName(gauge.displayName())
-                                .withDescription(gauge.description())
-                                .withType(MetricType.GAUGE)
-                                .withUnit(gauge.unit())
-                                .build();
-                        final MetricID metricID = new MetricID(name, createTags(gauge.tags()));
-                        addRegistration(metadata, metricID, false);
-                        gaugeFactories.put(metricID, beanManager -> {
-                            final Object reference = getInstance(javaClass, beanManager);
-                            final Method mtd = Method.class.cast(javaMember);
-                            return new GaugeImpl<>(reference, mtd);
-                        });
-                    }
-                });
+                .filter(method -> !method.isAnnotationPresent(Produces.class))
+                .forEach(method -> doRegisterMetric(annotatedType, javaClass, method));
     }
 
     void afterBeanDiscovery(@Observes final AfterBeanDiscovery afterBeanDiscovery) {
@@ -436,6 +332,115 @@ public class MetricsExtension implements Extension {
 
     void beforeShutdown(@Observes final BeforeShutdown beforeShutdown) {
         creationalContexts.forEach(CreationalContext::release);
+    }
+
+    private void doRegisterMetric(final AnnotatedType<?> annotatedType, final Class<?> javaClass, final AnnotatedCallable<?> method) {
+        final Member javaMember = method.getJavaMember();
+
+        final Counted counted = ofNullable(method.getAnnotation(Counted.class)).orElseGet(() ->
+                getAnnotation(annotatedType, Counted.class));
+        if (counted != null) {
+            final boolean isMethod = method.isAnnotationPresent(Counted.class);
+            final String name = Names.findName(javaClass, javaMember, isMethod ? counted.name() : "", counted.absolute(),
+                    ofNullable(getAnnotation(annotatedType, Counted.class)).map(Counted::name).orElse(""));
+            final Metadata metadata = Metadata.builder()
+                    .withName(name)
+                    .withDisplayName(counted.displayName())
+                    .withDescription(counted.description())
+                    .withType(MetricType.COUNTER)
+                    .withUnit(counted.unit())
+                    .build();
+            final MetricID metricID = new MetricID(name, createTags(counted.tags()));
+            addRegistration(metadata, metricID, counted.reusable() || !isMethod);
+        }
+
+        final ConcurrentGauge concurrentGauge = ofNullable(method.getAnnotation(ConcurrentGauge.class)).orElseGet(() ->
+                getAnnotation(annotatedType, ConcurrentGauge.class));
+        if (concurrentGauge != null) {
+            final boolean isMethod = method.isAnnotationPresent(ConcurrentGauge.class);
+            final String name = Names.findName(javaClass, javaMember, isMethod ? concurrentGauge.name() : "", concurrentGauge.absolute(),
+                    ofNullable(getAnnotation(annotatedType, ConcurrentGauge.class)).map(ConcurrentGauge::name).orElse(""));
+            final Metadata metadata = Metadata.builder()
+                    .withName(name)
+                    .withDisplayName(concurrentGauge.displayName())
+                    .withDescription(concurrentGauge.description())
+                    .withType(MetricType.CONCURRENT_GAUGE)
+                    .withUnit(concurrentGauge.unit())
+                    .build();
+            final MetricID metricID = new MetricID(name, createTags(concurrentGauge.tags()));
+            addRegistration(metadata, metricID, concurrentGauge.reusable() || !isMethod);
+        }
+
+        final Timed timed = ofNullable(method.getAnnotation(Timed.class)).orElseGet(() -> getAnnotation(annotatedType, Timed.class));
+        if (timed != null) {
+            final boolean isMethod = method.isAnnotationPresent(Timed.class);
+            final String name = Names.findName(javaClass, javaMember, isMethod ? timed.name() : "", timed.absolute(),
+                    ofNullable(getAnnotation(annotatedType, Timed.class)).map(Timed::name).orElse(""));
+            final Metadata metadata = Metadata.builder()
+                    .withName(name)
+                    .withDisplayName(timed.displayName())
+                    .withDescription(timed.description())
+                    .withType(MetricType.TIMER)
+                    .withUnit(timed.unit())
+                    .build();
+            final MetricID metricID = new MetricID(name, createTags(timed.tags()));
+            addRegistration(metadata, metricID, timed.reusable() || !isMethod);
+        }
+
+        final SimplyTimed simplyTimed = ofNullable(method.getAnnotation(SimplyTimed.class)).orElseGet(() -> getAnnotation(annotatedType, SimplyTimed.class));
+        if (simplyTimed != null) {
+            final boolean isMethod = method.isAnnotationPresent(SimplyTimed.class);
+            final String name = Names.findName(javaClass, javaMember, isMethod ? simplyTimed.name() : "", simplyTimed.absolute(),
+                    ofNullable(getAnnotation(annotatedType, SimplyTimed.class)).map(SimplyTimed::name).orElse(""));
+            final Metadata metadata = Metadata.builder()
+                    .withName(name)
+                    .withDisplayName(simplyTimed.displayName())
+                    .withDescription(simplyTimed.description())
+                    .withType(MetricType.SIMPLE_TIMER)
+                    .withUnit(simplyTimed.unit())
+                    .build();
+            final MetricID metricID = new MetricID(name, createTags(simplyTimed.tags()));
+            addRegistration(metadata, metricID, simplyTimed.reusable() || !isMethod);
+        }
+
+        final Metered metered = ofNullable(method.getAnnotation(Metered.class))
+                .orElseGet(() -> getAnnotation(annotatedType, Metered.class));
+        if (metered != null) {
+            final boolean isMethod = method.isAnnotationPresent(Metered.class);
+            final String name = Names.findName(javaClass, javaMember, isMethod ? metered.name() : "", metered.absolute(),
+                    ofNullable(getAnnotation(annotatedType, Metered.class)).map(Metered::name).orElse(""));
+            final Metadata metadata = Metadata.builder()
+                    .withName(name)
+                    .withDisplayName(metered.displayName())
+                    .withDescription(metered.description())
+                    .withType(MetricType.METERED)
+                    .withUnit(metered.unit())
+                    .build();
+            final MetricID metricID = new MetricID(name, createTags(metered.tags()));
+            addRegistration(metadata, metricID, metered.reusable() || !isMethod);
+        }
+
+        final org.eclipse.microprofile.metrics.annotation.Gauge gauge = ofNullable(method.getAnnotation(org.eclipse.microprofile.metrics.annotation.Gauge.class))
+                .orElseGet(() -> getAnnotation(annotatedType, org.eclipse.microprofile.metrics.annotation.Gauge.class));
+        if (gauge != null) {
+            final String name = Names.findName(
+                    javaClass, javaMember, gauge.name(), gauge.absolute(),
+                    ofNullable(getAnnotation(annotatedType, org.eclipse.microprofile.metrics.annotation.Gauge.class)).map(org.eclipse.microprofile.metrics.annotation.Gauge::name).orElse(""));
+            final Metadata metadata = Metadata.builder()
+                    .withName(name)
+                    .withDisplayName(gauge.displayName())
+                    .withDescription(gauge.description())
+                    .withType(MetricType.GAUGE)
+                    .withUnit(gauge.unit())
+                    .build();
+            final MetricID metricID = new MetricID(name, createTags(gauge.tags()));
+            addRegistration(metadata, metricID, false);
+            gaugeFactories.put(metricID, beanManager -> {
+                final Object reference = getInstance(javaClass, beanManager);
+                final Method mtd = Method.class.cast(javaMember);
+                return new GaugeImpl<>(reference, mtd);
+            });
+        }
     }
 
     private void registerProducer(final BeanManager beanManager, final org.eclipse.microprofile.metrics.annotation.Metric config,

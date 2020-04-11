@@ -23,14 +23,17 @@ import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toMap;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import javax.json.JsonValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.OPTIONS;
 import javax.ws.rs.Path;
@@ -54,6 +57,7 @@ import org.eclipse.microprofile.metrics.Metered;
 import org.eclipse.microprofile.metrics.Metric;
 import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
+import org.eclipse.microprofile.metrics.SimpleTimer;
 import org.eclipse.microprofile.metrics.Snapshot;
 import org.eclipse.microprofile.metrics.Timer;
 
@@ -255,9 +259,23 @@ public class MetricsEndpoints {
     private Object toJson(final Object metric, final String nameSuffix) {
         if (Timer.class.isInstance(metric)) {
             final Timer meter = Timer.class.cast(metric);
-            final Map<Object, Object> map = new HashMap<>(15);
+            final Map<Object, Object> map = new TreeMap<>();
             map.putAll(snapshot(meter.getSnapshot(), nameSuffix));
             map.putAll(meter(meter, nameSuffix));
+            final Duration elapsedTime = meter.getElapsedTime();
+            map.put("elapsedTime" + nameSuffix, elapsedTime == null ? 0 : elapsedTime.toNanos());
+            return map;
+        }
+        if (SimpleTimer.class.isInstance(metric)) {
+            final SimpleTimer simpleTimer = SimpleTimer.class.cast(metric);
+            final Map<Object, Object> map = new TreeMap<>();
+            map.put("count" + nameSuffix, simpleTimer.getCount());
+            final Duration elapsedTime = simpleTimer.getElapsedTime();
+            map.put("elapsedTime" + nameSuffix, elapsedTime == null ? 0 : elapsedTime.toNanos());
+            final Duration minTimeDuration = simpleTimer.getMinTimeDuration();
+            map.put("minTimeDuration" + nameSuffix, minTimeDuration == null ? JsonValue.NULL : minTimeDuration.toNanos());
+            final Duration maxTimeDuration = simpleTimer.getMaxTimeDuration();
+            map.put("maxTimeDuration" + nameSuffix, maxTimeDuration == null ? JsonValue.NULL : maxTimeDuration.toNanos());
             return map;
         }
         if (Meter.class.isInstance(metric)) {
@@ -265,14 +283,14 @@ public class MetricsEndpoints {
         }
         if (Histogram.class.isInstance(metric)) {
             final Histogram histogram = Histogram.class.cast(metric);
-            final Map<Object, Object> map = new HashMap<>(11);
+            final Map<Object, Object> map = new TreeMap<>();
             map.putAll(snapshot(histogram.getSnapshot(), nameSuffix));
             map.put("count" + nameSuffix, histogram.getCount());
             return map;
         }
         if (ConcurrentGauge.class.isInstance(metric)) {
             final ConcurrentGauge concurrentGauge = ConcurrentGauge.class.cast(metric);
-            final Map<Object, Object> map = new HashMap<>(3);
+            final Map<Object, Object> map = new TreeMap<>();
             map.put("min" + nameSuffix, concurrentGauge.getMin());
             map.put("current" + nameSuffix, concurrentGauge.getCount());
             map.put("max" + nameSuffix, concurrentGauge.getMax());
@@ -283,7 +301,7 @@ public class MetricsEndpoints {
     }
 
     private Map<String, Object> meter(final Metered metered, final String nameSuffix) {
-        final Map<String, Object> map = new HashMap<>(5);
+        final Map<String, Object> map = new TreeMap<>();
         map.put("count" + nameSuffix, metered.getCount());
         map.put("meanRate" + nameSuffix, metered.getMeanRate());
         map.put("oneMinRate" + nameSuffix, metered.getOneMinuteRate());
@@ -293,7 +311,7 @@ public class MetricsEndpoints {
     }
 
     private Map<String, Object> snapshot(final Snapshot snapshot, final String nameSuffix) {
-        final Map<String, Object> map = new HashMap<>(10);
+        final Map<String, Object> map = new TreeMap<>();
         map.put("p50" + nameSuffix, snapshot.getMedian());
         map.put("p75" + nameSuffix, snapshot.get75thPercentile());
         map.put("p95" + nameSuffix, snapshot.get95thPercentile());

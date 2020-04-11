@@ -36,6 +36,7 @@ import org.eclipse.microprofile.metrics.Timer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Modifier;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -81,7 +82,7 @@ public class PrometheusFormatter {
 
     public PrometheusFormatter enableOverriding() {
         try (final InputStream source = Thread.currentThread().getContextClassLoader()
-                                              .getResourceAsStream("META-INF/geronimo-metrics/prometheus-mapping.properties")) {
+                .getResourceAsStream("META-INF/geronimo-metrics/prometheus-mapping.properties")) {
             if (source != null) {
                 final Properties properties = new Properties();
                 properties.load(source);
@@ -91,8 +92,8 @@ public class PrometheusFormatter {
             // no-op
         }
         System.getProperties().stringPropertyNames().stream()
-              .filter(it -> it.startsWith("geronimo.metrics.prometheus.mapping."))
-              .forEach(k -> keyMapping.put(k.substring("geronimo.metrics.prometheus.mapping.".length()), System.getProperty(k)));
+                .filter(it -> it.startsWith("geronimo.metrics.prometheus.mapping."))
+                .forEach(k -> keyMapping.put(k.substring("geronimo.metrics.prometheus.mapping.".length()), System.getProperty(k)));
         afterOverride();
         return this;
     }
@@ -103,9 +104,9 @@ public class PrometheusFormatter {
             prefixFilter = null;
         } else {
             final List<String> prefixes = Stream.of(prefix.split(","))
-                                               .map(String::trim)
-                                               .filter(it -> !it.isEmpty())
-                                               .collect(toList());
+                    .map(String::trim)
+                    .filter(it -> !it.isEmpty())
+                    .collect(toList());
             final Predicate<String> directPredicate = name -> prefixes.stream().anyMatch(name::startsWith);
             prefixFilter = name -> directPredicate.test(name) || directPredicate.test(keyMapping.getOrDefault(name, name));
         }
@@ -181,50 +182,65 @@ public class PrometheusFormatter {
     }
 
     private StringBuilder histogram(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final Histogram histogram) {
+        final String type = entry.metadata == null ? null : entry.metadata.getType();
         return new StringBuilder()
-                .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
-                .append(value(registryKey, keyBase + keyUnit + "_count", histogram.getCount(), entry.metadata, tagsAsList))
+                .append(type(registryKey, keyBase + keyUnit + " summary", type))
+                .append(value(registryKey, keyBase + keyUnit + "_count", histogram.getCount(), type, entry.metadata, tagsAsList))
                 .append(toPrometheus(registryKey, keyBase, keyUnit, histogram.getSnapshot(), entry.metadata, tagsAsList));
     }
 
     private StringBuilder timer(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final Timer timer) {
+        final Duration elapsedTime = timer.getElapsedTime();
+        final String type = entry.metadata == null ? null : entry.metadata.getType();
         return new StringBuilder()
-                .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
-                .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), entry.metadata, tagsAsList))
+                .append(type(registryKey, keyBase + keyUnit + " summary", type))
+                .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_elapsedTime", elapsedTime == null ? 0 : elapsedTime.toNanos(), type, entry.metadata, tagsAsList))
                 .append(meter(registryKey, entry, tagsAsList, timer, keyBase))
                 .append(toPrometheus(registryKey, keyBase, keyUnit, timer.getSnapshot(), entry.metadata, tagsAsList));
     }
 
-    private StringBuilder simpleTimer(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final SimpleTimer timer) {
-        return new StringBuilder()
-                .append(type(registryKey, keyBase + keyUnit + " summary", entry.metadata))
-                .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), entry.metadata, tagsAsList));
+    private StringBuilder simpleTimer(final String registryKey, final Entry entry, final List<Tag> tagsAsList,
+                                      final String keyBase, final String keyUnit, final SimpleTimer timer) {
+        final Duration elapsedTime = timer.getElapsedTime();
+        final StringBuilder builder = new StringBuilder()
+                .append(type(registryKey, keyBase + keyUnit + " summary", "simple timer"))
+                .append(value(registryKey, keyBase + "_total", timer.getCount(), "counter", entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_elapsedTime" + keyUnit, elapsedTime == null ? 0 : elapsedTime.toNanos(), "simple timer", entry.metadata, tagsAsList));
+        final Duration minTimeDuration = timer.getMinTimeDuration();
+        builder.append(value(registryKey, keyBase + "_minTimeDuration" + keyUnit, minTimeDuration == null ? Double.NaN : minTimeDuration.toNanos(), "simple timer", entry.metadata, tagsAsList));
+        final Duration maxTimeDuration = timer.getMaxTimeDuration();
+        builder.append(value(registryKey, keyBase + "_maxTimeDuration" + keyUnit, maxTimeDuration == null ? Double.NaN : maxTimeDuration.toNanos(), "simple timer", entry.metadata, tagsAsList));
+        return builder;
     }
 
     private StringBuilder meter(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final Metered meter, final String keyBase) {
+        final String type = entry.metadata == null ? null : entry.metadata.getType();
         return new StringBuilder()
-                .append(value(registryKey, keyBase + "_rate_per_second", meter.getMeanRate(), entry.metadata, tagsAsList))
-                .append(value(registryKey, keyBase + "_one_min_rate_per_second", meter.getOneMinuteRate(), entry.metadata, tagsAsList))
-                .append(value(registryKey, keyBase + "_five_min_rate_per_second", meter.getFiveMinuteRate(), entry.metadata, tagsAsList))
-                .append(value(registryKey, keyBase + "_fifteen_min_rate_per_second", meter.getFifteenMinuteRate(), entry.metadata, tagsAsList))
-                .append(value(registryKey, keyBase + "_total", meter.getCount(), entry.metadata, tagsAsList));
+                .append(value(registryKey, keyBase + "_rate_per_second", meter.getMeanRate(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_one_min_rate_per_second", meter.getOneMinuteRate(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_five_min_rate_per_second", meter.getFiveMinuteRate(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_fifteen_min_rate_per_second", meter.getFifteenMinuteRate(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, keyBase + "_total", meter.getCount(), type, entry.metadata, tagsAsList));
     }
 
     private StringBuilder gauge(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final Number value, final String key) {
         return new StringBuilder()
-                .append(value(registryKey, key, value.doubleValue(), entry.metadata, tagsAsList));
+                .append(value(registryKey, key, value.doubleValue(), entry.metadata == null ? null : entry.metadata.getType(), entry.metadata, tagsAsList));
     }
 
     private StringBuilder concurrentGauge(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String key, final ConcurrentGauge concurrentGauge) {
+        final String type = entry.metadata == null ? null : entry.metadata.getType();
         return new StringBuilder()
-                .append(value(registryKey, key + "_current", concurrentGauge.getCount(), entry.metadata, tagsAsList))
-                .append(value(registryKey, key + "_min", concurrentGauge.getMin(), entry.metadata, tagsAsList))
-                .append(value(registryKey, key + "_max", concurrentGauge.getMax(), entry.metadata, tagsAsList));
+                .append(value(registryKey, key + "_current", concurrentGauge.getCount(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, key + "_min", concurrentGauge.getMin(), type, entry.metadata, tagsAsList))
+                .append(value(registryKey, key + "_max", concurrentGauge.getMax(), type, entry.metadata, tagsAsList));
     }
 
     private StringBuilder counter(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String key) {
         return new StringBuilder()
-                .append(value(registryKey, key, Counter.class.cast(entry.metric).getCount(), entry.metadata, tagsAsList));
+                .append(value(registryKey, key, Counter.class.cast(entry.metric).getCount(),
+                        entry.metadata == null ? null : entry.metadata.getType(), entry.metadata, tagsAsList));
     }
 
     private StringBuilder toPrometheus(final String registryKey, final String keyBase, final String keyUnit,
@@ -232,22 +248,23 @@ public class PrometheusFormatter {
         final Function<Stream<Tag>, Collection<Tag>> metaFactory = newTags -> Stream.concat(
                 tags == null ? Stream.empty() : tags.stream(), newTags).distinct().collect(toList());
         final String completeKey = keyBase + keyUnit;
+        final String type = metadata == null ? null : metadata.getType();
         return new StringBuilder()
-                .append(value(registryKey, keyBase + "_min" + keyUnit, snapshot.getMin(), metadata, tags))
-                .append(value(registryKey, keyBase + "_max" + keyUnit, snapshot.getMax(), metadata, tags))
-                .append(value(registryKey, keyBase + "_mean" + keyUnit, snapshot.getMean(), metadata, tags))
-                .append(value(registryKey, keyBase + "_stddev" + keyUnit, snapshot.getStdDev(), metadata, tags))
-                .append(value(registryKey, completeKey, snapshot.getMedian(), metadata,
+                .append(value(registryKey, keyBase + "_min" + keyUnit, snapshot.getMin(), type, metadata, tags))
+                .append(value(registryKey, keyBase + "_max" + keyUnit, snapshot.getMax(), type, metadata, tags))
+                .append(value(registryKey, keyBase + "_mean" + keyUnit, snapshot.getMean(), type, metadata, tags))
+                .append(value(registryKey, keyBase + "_stddev" + keyUnit, snapshot.getStdDev(), type, metadata, tags))
+                .append(value(registryKey, completeKey, snapshot.getMedian(), type, metadata,
                         metaFactory.apply(Stream.of(new Tag("quantile", "0.5")))))
-                .append(value(registryKey, completeKey, snapshot.get75thPercentile(), metadata,
+                .append(value(registryKey, completeKey, snapshot.get75thPercentile(), type, metadata,
                         metaFactory.apply(Stream.of(new Tag("quantile", "0.75")))))
-                .append(value(registryKey, completeKey, snapshot.get95thPercentile(), metadata,
+                .append(value(registryKey, completeKey, snapshot.get95thPercentile(), type, metadata,
                         metaFactory.apply(Stream.of(new Tag("quantile", "0.95")))))
-                .append(value(registryKey, completeKey, snapshot.get98thPercentile(), metadata,
+                .append(value(registryKey, completeKey, snapshot.get98thPercentile(), type, metadata,
                         metaFactory.apply(Stream.of(new Tag("quantile", "0.98")))))
-                .append(value(registryKey, completeKey, snapshot.get99thPercentile(), metadata,
+                .append(value(registryKey, completeKey, snapshot.get99thPercentile(), type, metadata,
                         metaFactory.apply(Stream.of(new Tag("quantile", "0.99")))))
-                .append(value(registryKey, completeKey, snapshot.get999thPercentile(), metadata,
+                .append(value(registryKey, completeKey, snapshot.get999thPercentile(), type, metadata,
                         metaFactory.apply(Stream.of(new Tag("quantile", "0.999")))));
     }
 
@@ -256,15 +273,15 @@ public class PrometheusFormatter {
     }
 
     private String toUnitSuffix(final Metadata metadata, final boolean enforceValid) {
-        final String unit = enforceValid ? getValidUnit(metadata) : metadata.getUnit().orElse(MetricUnits.NONE) ;
+        final String unit = enforceValid ? getValidUnit(metadata) : metadata.getUnit().orElse(MetricUnits.NONE);
         return MetricUnits.NONE.equalsIgnoreCase(unit) || (enforceValid && !validUnits.contains(unit)) ? "" : ("_" + toPrometheusUnit(unit));
     }
 
     private StringBuilder value(final String registryKey, final String key, final double value,
-                                final Metadata metadata, final Collection<Tag> tags) {
+                                final String type, final Metadata metadata, final Collection<Tag> tags) {
         final String builtKey = registryKey + '_' + key;
         return new StringBuilder()
-                .append(type(registryKey, key, metadata))
+                .append(type(registryKey, key, type))
                 .append(keyMapping.getOrDefault(builtKey, builtKey))
                 .append(of(tags)
                         .filter(t -> !t.isEmpty())
@@ -285,12 +302,12 @@ public class PrometheusFormatter {
         return unit;
     }
 
-    private StringBuilder type(final String registryKey, final String key, final Metadata metadata) {
+    private StringBuilder type(final String registryKey, final String key, final String type) {
         final String builtKey = registryKey + '_' + key;
         final StringBuilder builder = new StringBuilder()
                 .append("# TYPE ").append(keyMapping.getOrDefault(builtKey, builtKey));
-        if (metadata != null) {
-            builder.append(' ').append(metadata.getType());
+        if (type != null) {
+            builder.append(' ').append(type);
         }
         return builder.append("\n");
     }
