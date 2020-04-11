@@ -85,6 +85,8 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
+          <forkCount>1</forkCount>
+          <runOrder>alphabetical</runOrder>
           <dependenciesToScan>
             <dependency>org.eclipse.microprofile.metrics:microprofile-metrics-api-tck</dependency>
             <dependency>org.eclipse.microprofile.metrics:microprofile-metrics-rest-tck</dependency>

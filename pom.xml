@@ -43,8 +43,9 @@
 
   <properties>
     <spec.version>3.0-M2</spec.version>
-    <arquillian.version>1.1.8.Final</arquillian.version>
+    <arquillian.version>1.1.13.Final</arquillian.version>
     <meecrowave.version>1.2.8</meecrowave.version>
+    <owb.version>2.0.16</owb.version>
   </properties>
 
   <modules>
@@ -152,8 +153,26 @@
       </dependency>
       <dependency>
         <groupId>org.apache.openwebbeans</groupId>
+        <artifactId>openwebbeans-impl</artifactId>
+        <version>${owb.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.openwebbeans</groupId>
         <artifactId>openwebbeans-web</artifactId>
-        <version>2.0.16</version>
+        <version>${owb.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.openwebbeans</groupId>
+        <artifactId>openwebbeans-el22</artifactId>
+        <version>${owb.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.openwebbeans</groupId>
+        <artifactId>openwebbeans-spi</artifactId>
+        <version>${owb.version}</version>
         <scope>test</scope>
       </dependency>
     </dependencies>
@@ -191,7 +210,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.22.1</version>
+        <version>3.0.0-M4</version>
         <configuration>
           <reuseForks>true</reuseForks>
           <forkCount>1</forkCount>

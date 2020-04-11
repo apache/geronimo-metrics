@@ -50,7 +50,7 @@ public class SimpleTimerImpl implements SimpleTimer {
 
     @Override
     public void update(final Duration duration) {
-        if (duration.isNegative() || duration.isZero()) {
+        if (duration.isNegative()) {
             return;
         }
         maybeRotate();

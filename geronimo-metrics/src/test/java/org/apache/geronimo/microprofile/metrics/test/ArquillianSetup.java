@@ -16,15 +16,6 @@
  */
 package org.apache.geronimo.microprofile.metrics.test;
 
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.stream.Stream;
-
-import javax.enterprise.inject.spi.BeanManager;
-import javax.enterprise.inject.spi.CDI;
-import javax.enterprise.util.AnnotationLiteral;
-
 import org.apache.catalina.Context;
 import org.apache.meecrowave.Meecrowave;
 import org.apache.meecrowave.arquillian.MeecrowaveContainer;
@@ -37,10 +28,7 @@ import org.jboss.arquillian.container.spi.context.annotation.DeploymentScoped;
 import org.jboss.arquillian.container.spi.event.container.AfterDeploy;
 import org.jboss.arquillian.container.spi.event.container.AfterStart;
 import org.jboss.arquillian.container.spi.event.container.BeforeUnDeploy;
-import org.jboss.arquillian.container.test.impl.client.protocol.local.LocalProtocol;
 import org.jboss.arquillian.container.test.spi.client.deployment.ApplicationArchiveProcessor;
-import org.jboss.arquillian.container.test.spi.client.deployment.DeploymentPackager;
-import org.jboss.arquillian.container.test.spi.client.protocol.Protocol;
 import org.jboss.arquillian.core.api.Instance;
 import org.jboss.arquillian.core.api.InstanceProducer;
 import org.jboss.arquillian.core.api.annotation.Inject;
@@ -50,16 +38,21 @@ import org.jboss.arquillian.test.spi.TestClass;
 import org.jboss.arquillian.test.spi.TestEnricher;
 import org.jboss.arquillian.test.spi.event.suite.Before;
 import org.jboss.shrinkwrap.api.Archive;
-import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
-import org.jboss.shrinkwrap.api.spec.WebArchive;
+
+import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.CDI;
+import javax.enterprise.util.AnnotationLiteral;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.stream.Stream;
 
 public class ArquillianSetup implements LoadableExtension {
     @Override
     public void register(final ExtensionBuilder extensionBuilder) {
         extensionBuilder.observer(EnvSetup.class)
                 .override(DeployableContainer.class, MeecrowaveContainer.class, TckContainer.class)
-                .override(Protocol.class, LocalProtocol.class, ForceWarProtocol.class)
                 .service(TestEnricher.class, ParamEnricher.class)
                 .service(ApplicationArchiveProcessor.class, EnsureTestIsInTheArchiveProcessor.class);
     }
@@ -200,20 +193,6 @@ public class ArquillianSetup implements LoadableExtension {
         @Override
         public String unit() {
             return delegate.unit();
-        }
-    }
-
-    public static class ForceWarProtocol extends LocalProtocol {
-        @Override
-        public DeploymentPackager getPackager() {
-            return (deployment, collection) -> {
-                final Archive<?> archive = deployment.getApplicationArchive();
-                if (JavaArchive.class.isInstance(archive)) {
-                    return ShrinkWrap.create(WebArchive.class, archive.getName().replace(".jar", ".war"))
-                            .addAsLibraries(archive);
-                }
-                return archive;
-            };
         }
     }
 
