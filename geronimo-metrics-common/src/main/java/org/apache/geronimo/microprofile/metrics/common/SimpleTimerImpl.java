@@ -108,13 +108,13 @@ public class SimpleTimerImpl implements SimpleTimer {
     @Override
     public Duration getMaxTimeDuration() {
         maybeRotate();
-        return max;
+        return previousMax;
     }
 
     @Override
     public Duration getMinTimeDuration() {
         maybeRotate();
-        return min;
+        return previousMin;
     }
 
     private void maybeRotate() {
