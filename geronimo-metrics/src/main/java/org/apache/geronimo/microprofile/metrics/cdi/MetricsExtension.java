@@ -19,8 +19,6 @@ package org.apache.geronimo.microprofile.metrics.cdi;
 import org.apache.geronimo.microprofile.metrics.common.BaseMetrics;
 import org.apache.geronimo.microprofile.metrics.common.GaugeImpl;
 import org.apache.geronimo.microprofile.metrics.common.RegistryImpl;
-import org.apache.geronimo.microprofile.metrics.common.jaxrs.MetricsEndpoints;
-import org.apache.geronimo.microprofile.metrics.jaxrs.CdiMetricsEndpoints;
 import org.eclipse.microprofile.metrics.Counter;
 import org.eclipse.microprofile.metrics.Gauge;
 import org.eclipse.microprofile.metrics.Histogram;
@@ -84,7 +82,7 @@ import java.util.stream.Stream;
 import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 
-public class MetricsExtension implements Extension {
+public class MetricsExtension implements Extension { // must not explicitly depend on jaxrs since it is dropped in nojaxrs bundle
     private static final Tag[] NO_TAG = new Tag[0];
 
     private final MetricRegistry applicationRegistry = new RegistryImpl(MetricRegistry.Type.APPLICATION);
@@ -98,8 +96,13 @@ public class MetricsExtension implements Extension {
 
     private Map<String, String> environmentalTags;
 
-    void vetoEndpointIfNotActivated(@Observes final ProcessAnnotatedType<CdiMetricsEndpoints> processAnnotatedType) {
-        if ("false".equalsIgnoreCase(System.getProperty("geronimo.metrics.jaxrs.activated"))) { // default is secured so deploy
+    void vetoEndpointIfNotActivated(@Observes final ProcessAnnotatedType<?> processAnnotatedType) {
+        // default is secured so deploy
+        final String name = processAnnotatedType.getAnnotatedType().getJavaClass().getName();
+        if ("false".equalsIgnoreCase(System.getProperty("geronimo.metrics.jaxrs.activated")) &&
+                name.equals("org.apache.geronimo.microprofile.metrics.jaxrs.CdiMetricsEndpoints")) {
+            processAnnotatedType.veto();
+        } else if ("org.apache.geronimo.microprofile.metrics.common.jaxrs.MetricsEndpoints".equals(name)) { // can happen in shades
             processAnnotatedType.veto();
         }
     }
@@ -107,13 +110,6 @@ public class MetricsExtension implements Extension {
     // can happen in shades
     void vetoDefaultRegistry(@Observes final ProcessAnnotatedType<RegistryImpl> processAnnotatedType) {
         processAnnotatedType.veto();
-    }
-
-    // can happen in shades
-    void vetoNonCdiEndpoint(@Observes final ProcessAnnotatedType<MetricsEndpoints> processAnnotatedType) {
-        if (processAnnotatedType.getAnnotatedType().getJavaClass() == MetricsEndpoints.class) { // not subclasses
-            processAnnotatedType.veto();
-        }
     }
 
     void letOtherExtensionsUseRegistries(@Observes final BeforeBeanDiscovery beforeBeanDiscovery, final BeanManager beanManager) {
