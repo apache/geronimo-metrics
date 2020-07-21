@@ -198,7 +198,7 @@ public class RegistryImpl implements MetricRegistry {
 
     @Override
     public Gauge<?> gauge(final String name, final Gauge<?> gauge, final Tag...tags) {
-        return register(Metadata.builder().reusable().withName(name).build(), gauge, tags);
+        return register(Metadata.builder().reusable().withName(name).withType(MetricType.GAUGE).build(), gauge, tags);
     }
 
     @Override
