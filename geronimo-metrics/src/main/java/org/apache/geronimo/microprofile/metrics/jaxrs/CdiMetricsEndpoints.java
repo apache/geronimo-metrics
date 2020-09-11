@@ -47,5 +47,6 @@ public class CdiMetricsEndpoints extends MetricsEndpoints {
         setApplicationRegistry(applicationRegistry);
         setBaseRegistry(baseRegistry);
         setVendorRegistry(vendorRegistry);
+        super.init();
     }
 }

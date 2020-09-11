@@ -16,36 +16,7 @@
  */
 package org.apache.geronimo.microprofile.metrics.common.jaxrs;
 
-import static java.util.Collections.emptyMap;
-import static java.util.Collections.singletonMap;
-import static java.util.Optional.ofNullable;
-import static java.util.function.Function.identity;
-import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toMap;
-
-import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.TreeMap;
-import java.util.function.Function;
-import java.util.regex.Pattern;
-import java.util.stream.Stream;
-
-import javax.json.JsonValue;
-import javax.ws.rs.GET;
-import javax.ws.rs.OPTIONS;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
-import javax.ws.rs.core.UriInfo;
-
+import org.apache.geronimo.microprofile.metrics.common.RegistryImpl;
 import org.apache.geronimo.microprofile.metrics.common.prometheus.PrometheusFormatter;
 import org.eclipse.microprofile.metrics.ConcurrentGauge;
 import org.eclipse.microprofile.metrics.Counter;
@@ -59,7 +30,36 @@ import org.eclipse.microprofile.metrics.MetricID;
 import org.eclipse.microprofile.metrics.MetricRegistry;
 import org.eclipse.microprofile.metrics.SimpleTimer;
 import org.eclipse.microprofile.metrics.Snapshot;
+import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.Timer;
+
+import javax.json.JsonValue;
+import javax.ws.rs.GET;
+import javax.ws.rs.OPTIONS;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
+import javax.ws.rs.core.UriInfo;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+import static java.util.Collections.emptyMap;
+import static java.util.Collections.singletonMap;
+import static java.util.Optional.ofNullable;
+import static java.util.function.Function.identity;
+import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toMap;
 
 @Path("metrics")
 public class MetricsEndpoints {
@@ -68,6 +68,7 @@ public class MetricsEndpoints {
     private MetricRegistry baseRegistry;
     private MetricRegistry vendorRegistry;
     private MetricRegistry applicationRegistry;
+    private Tag[] globalTags = new Tag[0]; // ensure forgetting to call init() is tolerated for backward compatibility
 
     private SecurityValidator securityValidator = new SecurityValidator() {
         {
@@ -76,6 +77,16 @@ public class MetricsEndpoints {
     };
 
     private PrometheusFormatter prometheus = new PrometheusFormatter().enableOverriding();
+
+    protected void init() {
+        globalTags = Stream.of(baseRegistry, vendorRegistry, applicationRegistry)
+                .filter(RegistryImpl.class::isInstance)
+                .map(RegistryImpl.class::cast)
+                .findFirst()
+                .map(RegistryImpl::getGlobalTags)
+                .orElseGet(() -> new Tag[0]);
+        prometheus.withGlobalTags(globalTags);
+    }
 
     public void setBaseRegistry(final MetricRegistry baseRegistry) {
         this.baseRegistry = baseRegistry;
@@ -197,7 +208,8 @@ public class MetricsEndpoints {
 
     private MetricID findMetricId(final MetricRegistry metricRegistry, final Metadata value) {
         final Map<MetricID, Metric> metrics = metricRegistry.getMetrics();
-        final MetricID directKey = new MetricID(value.getName());
+        final MetricID directKey = RegistryImpl.class.isInstance(metricRegistry) && RegistryImpl.class.cast(metricRegistry).getGlobalTags().length > 0 ?
+                new MetricID(value.getName(), RegistryImpl.class.cast(metricRegistry).getGlobalTags()) : new MetricID(value.getName());
         if (metrics.containsKey(directKey)) {
             return directKey;
         }
@@ -225,7 +237,8 @@ public class MetricsEndpoints {
 
     private <T> Map<String, T> singleEntry(final String id, final MetricRegistry metricRegistry,
                                            final Function<Metric, T> metricMapper) {
-        final MetricID key = new MetricID(id);
+        final MetricID key = RegistryImpl.class.isInstance(metricRegistry) && RegistryImpl.class.cast(metricRegistry).getGlobalTags().length > 0 ?
+                new MetricID(id, RegistryImpl.class.cast(metricRegistry).getGlobalTags()) : new MetricID(id);
         final Map<MetricID, Metric> metrics = metricRegistry.getMetrics();
         return ofNullable(metrics.get(key)) // try first without any tag (fast access)
                 .map(metric -> singletonMap(id + formatTags(key), metricMapper.apply(metric)))
@@ -235,7 +248,7 @@ public class MetricsEndpoints {
     }
 
     private Meta mapMeta(final Metadata value, final MetricID metricID) {
-        return ofNullable(value).map(v -> new Meta(value, metricID)).orElse(null);
+        return ofNullable(value).map(v -> new Meta(value, metricID, globalTags)).orElse(null);
     }
 
     private Object map(final Metric metric) {
@@ -339,18 +352,22 @@ public class MetricsEndpoints {
     }
 
     private String formatTags(final MetricID id) {
-        return id.getTags().isEmpty() ? "" : (';' + id.getTagsAsList().stream()
+        return id.getTags().isEmpty() && globalTags.length == 0 ? "" : (';' +
+                Stream.concat(id.getTagsAsList().stream(), Stream.of(globalTags))
                 .map(e -> e.getTagName() + "=" + semicolon.matcher(e.getTagValue()).replaceAll("_"))
+                .distinct()
                 .collect(joining(";")));
     }
 
     public static class Meta {
         private final Metadata value;
         private final MetricID metricID;
+        private final Tag[] globalTags;
 
-        private Meta(final Metadata value, final MetricID metricID) {
+        private Meta(final Metadata value, final MetricID metricID, final Tag[] globalTags) {
             this.value = value;
             this.metricID = metricID;
+            this.globalTags = globalTags;
         }
 
         public String getName() {
@@ -362,7 +379,7 @@ public class MetricsEndpoints {
         }
 
         public String getDescription() {
-            return value.getDescription().orElse(null);
+            return value.getDescription();
         }
 
         public String getType() {
@@ -374,15 +391,15 @@ public class MetricsEndpoints {
         }
 
         public String getUnit() {
-            return value.getUnit().orElse(null);
-        }
-
-        public boolean isReusable() {
-            return value.isReusable();
+            return value.getUnit();
         }
 
         public String getTags() { // not sure why tck expect it, sounds worse than native getTags for clients (array of key/values)
-            return metricID.getTags().entrySet().stream().map(e -> e.getKey() + '=' + e.getValue()).collect(joining(","));
+            return Stream.concat(
+                    metricID.getTags().entrySet().stream().map(e -> e.getKey() + '=' + e.getValue()),
+                    Stream.of(globalTags).map(e -> e.getTagName() + '=' + e.getTagValue()))
+                    .distinct()
+                    .collect(joining(","));
         }
     }
 }

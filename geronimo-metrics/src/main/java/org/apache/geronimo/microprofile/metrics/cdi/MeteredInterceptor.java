@@ -95,7 +95,7 @@ public class MeteredInterceptor implements Serializable {
                     ofNullable(extension.getAnnotation(type, Metered.class)).map(Metered::name).orElse(""));
 
             meter = registry.getMeter(
-                    new MetricID(name, metered == null ? new Tag[0] : extension.createTags(metered.tags())));
+                    new MetricID(name, extension.createTags(metered == null ? new String[0] : metered.tags())));
             if (meter == null) {
                 throw new IllegalStateException("No meter with name [" + name + "] found in registry [" + registry + "]");
             }

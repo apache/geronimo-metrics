@@ -104,7 +104,7 @@ public class ConcurrentGaugeInterceptor implements Serializable {
                             .orElse(""));
 
             final ConcurrentGauge gauge = registry.getConcurrentGauge(
-                    new MetricID(name, concurrentGauge == null ? new Tag[0] : extension.createTags(concurrentGauge.tags())));
+                    new MetricID(name, extension.createTags(concurrentGauge == null ? new String[0] : concurrentGauge.tags())));
             if (gauge == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }

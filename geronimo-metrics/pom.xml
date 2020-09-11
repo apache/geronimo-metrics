@@ -27,8 +27,9 @@
   <name>Geronimo Metrics :: Impl</name>
 
   <properties>
-    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics
-    </geronimo-metrics.Automatic-Module-Name>
+    <geronimo-metrics.Automatic-Module-Name>org.apache.geronimo.microprofile.metrics</geronimo-metrics.Automatic-Module-Name>
+
+    <tck.forkCount>1</tck.forkCount>
   </properties>
 
   <dependencies>
@@ -77,6 +78,18 @@
       <version>${spec.version}</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.hamcrest</groupId>
+          <artifactId>hamcrest-core</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
   </dependencies>
 
   <build>
@@ -85,7 +98,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <forkCount>1</forkCount>
+          <forkCount>${tck.forkCount}</forkCount>
           <runOrder>alphabetical</runOrder>
           <dependenciesToScan>
             <dependency>org.eclipse.microprofile.metrics:microprofile-metrics-api-tck</dependency>

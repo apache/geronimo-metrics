@@ -40,7 +40,6 @@ public class MicroprofileMetricsAdapter {
                 .withDescription(def.getDescription())
                 .withType(GAUGE)
                 .withUnit(def.getUnit())
-                .reusable(true)
                 .build();
             try {
                 registry.register(metadata, (Gauge<Double>) () -> def.getEvaluator()

@@ -17,10 +17,10 @@
 package org.apache.geronimo.microprofile.metrics.test;
 
 import org.apache.catalina.Context;
+import org.apache.geronimo.microprofile.metrics.cdi.MetricsExtension;
 import org.apache.meecrowave.Meecrowave;
 import org.apache.meecrowave.arquillian.MeecrowaveContainer;
 import org.eclipse.microprofile.metrics.MetricID;
-import org.eclipse.microprofile.metrics.Tag;
 import org.eclipse.microprofile.metrics.annotation.Metric;
 import org.jboss.arquillian.container.spi.client.container.DeployableContainer;
 import org.jboss.arquillian.container.spi.context.annotation.ContainerScoped;
@@ -128,7 +128,9 @@ public class ArquillianSetup implements LoadableExtension {
                         thread.setContextClassLoader(appClassLoaderInstanceProducer.get());
                         try {
                             final CDI<Object> cdi = CDI.current();
-                            final Annotation[] qualifiers = Stream.of(p.getAnnotations()).filter(it -> cdi.getBeanManager().isQualifier(it.annotationType())).toArray(Annotation[]::new);
+                            final Annotation[] qualifiers = Stream.of(p.getAnnotations())
+                                    .filter(it -> cdi.getBeanManager().isQualifier(it.annotationType()))
+                                    .toArray(Annotation[]::new);
                             return cdi.select(p.getType(), fixQualifiers(qualifiers)).get();
                         } catch (final RuntimeException re) {
                             re.printStackTrace(); // easier to debug when some test fail since TCK inject metrics as params
@@ -141,14 +143,17 @@ public class ArquillianSetup implements LoadableExtension {
         }
 
         private Annotation[] fixQualifiers(final Annotation[] qualifiers) {
+            final MetricsExtension metricsExtension = CDI.current().select(MetricsExtension.class).get();
             return Stream.of(qualifiers)
                     .map(it -> {
                         if (Metric.class == it.annotationType()) { // we make tags and name binding so ensure it uses the right values
                             final Metric delegate = Metric.class.cast(it);
-                            return new MetricLiteral(delegate, new MetricID(delegate.name(), Stream.of(delegate.tags()).filter(tag -> tag.contains("=")).map(tag -> {
-                                final int sep = tag.indexOf("=");
-                                return new Tag(tag.substring(0, sep), tag.substring(sep + 1));
-                            }).toArray(Tag[]::new)).getTagsAsList().stream().map(t -> t.getTagName() + '=' + t.getTagValue()).toArray(String[]::new));
+                            final String[] tags = new MetricID(delegate.name(), metricsExtension.createTags(delegate.tags()))
+                                    .getTagsAsList().stream()
+                                    .map(t -> t.getTagName() + '=' + t.getTagValue())
+                                    .distinct()
+                                    .toArray(String[]::new);
+                            return new MetricLiteral(delegate, tags);
                         }
                         return it;
                     })

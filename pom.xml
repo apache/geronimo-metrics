@@ -42,10 +42,11 @@
   </scm>
 
   <properties>
-    <spec.version>3.0-M2</spec.version>
+    <spec.version>3.0-RC2</spec.version>
     <arquillian.version>1.1.13.Final</arquillian.version>
     <meecrowave.version>1.2.8</meecrowave.version>
     <owb.version>2.0.16</owb.version>
+    <junit.version>4.13</junit.version>
   </properties>
 
   <modules>
@@ -101,7 +102,7 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.12</version>
+      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

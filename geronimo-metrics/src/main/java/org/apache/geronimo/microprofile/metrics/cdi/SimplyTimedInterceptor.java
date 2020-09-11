@@ -90,7 +90,7 @@ public class SimplyTimedInterceptor implements Serializable {
                     Modifier.isAbstract(executable.getDeclaringClass().getModifiers()) ? type.getJavaClass() : executable.getDeclaringClass(),
                     executable, timed == null ? null : timed.name(), timed != null && timed.absolute(),
                     ofNullable(extension.getAnnotation(type, SimplyTimed.class)).map(SimplyTimed::name).orElse(""));
-            timer = registry.getSimpleTimer(new MetricID(name, timed == null ? new Tag[0] : extension.createTags(timed.tags())));
+            timer = registry.getSimpleTimer(new MetricID(name, extension.createTags(timed == null ? new String[0] : timed.tags())));
             if (timer == null) {
                 throw new IllegalStateException("No timer with name [" + name + "] found in registry [" + registry + "]");
             }

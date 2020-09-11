@@ -99,7 +99,7 @@ public class CountedInterceptor implements Serializable {
                     ofNullable(extension.getAnnotation(type, Counted.class)).map(Counted::name).orElse(""));
 
             final Counter counter = registry.getCounter(
-                    new MetricID(name, counted == null ? new Tag[0] : extension.createTags(counted.tags())));
+                    new MetricID(name, extension.createTags(counted == null ? new String[0] : counted.tags())));
             if (counter == null) {
                 throw new IllegalStateException("No counter with name [" + name + "] found in registry [" + registry + "]");
             }

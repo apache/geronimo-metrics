@@ -60,6 +60,7 @@ public class PrometheusFormatter {
     protected final Set<Object> validUnits;
     protected final Map<String, String> keyMapping = new HashMap<>();
     protected Predicate<String> prefixFilter = null;
+    protected Tag[] globalTags;
 
     public PrometheusFormatter() {
         validUnits = Stream.of(MetricUnits.class.getDeclaredFields())
@@ -77,6 +78,11 @@ public class PrometheusFormatter {
     public PrometheusFormatter enableOverriding(final Properties properties) {
         properties.stringPropertyNames().forEach(k -> keyMapping.put(k, properties.getProperty(k)));
         afterOverride();
+        return this;
+    }
+
+    public PrometheusFormatter withGlobalTags(final Tag[] globalTags) {
+        this.globalTags = globalTags;
         return this;
     }
 
@@ -130,7 +136,7 @@ public class PrometheusFormatter {
                 })
                 .filter(it -> prefixFilter == null || prefixFilter.test(it.prometheusKey))
                 .map(entry -> {
-                    final List<Tag> tagsAsList = entry.metricID.getTagsAsList();
+                    final List<Tag> tagsAsList = getTags(entry);
                     switch (entry.metadata.getTypeRaw()) {
                         case COUNTER: {
                             String key = toPrometheusKey(entry.metadata);
@@ -179,6 +185,14 @@ public class PrometheusFormatter {
                     }
                 })
                 .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append);
+    }
+
+    private List<Tag> getTags(final Entry entry) {
+        return globalTags == null || globalTags.length == 0 ?
+                entry.metricID.getTagsAsList() :
+                Stream.concat(entry.metricID.getTagsAsList().stream(), Stream.of(globalTags))
+                    .distinct()
+                    .collect(toList());
     }
 
     private StringBuilder histogram(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final Histogram histogram) {
@@ -273,7 +287,7 @@ public class PrometheusFormatter {
     }
 
     private String toUnitSuffix(final Metadata metadata, final boolean enforceValid) {
-        final String unit = enforceValid ? getValidUnit(metadata) : metadata.getUnit().orElse(MetricUnits.NONE);
+        final String unit = enforceValid ? getValidUnit(metadata) : (metadata.getUnit() == null ? MetricUnits.NONE : metadata.getUnit());
         return MetricUnits.NONE.equalsIgnoreCase(unit) || (enforceValid && !validUnits.contains(unit)) ? "" : ("_" + toPrometheusUnit(unit));
     }
 
@@ -293,7 +307,7 @@ public class PrometheusFormatter {
     }
 
     private String getValidUnit(final Metadata metadata) {
-        final String unit = metadata.getUnit().orElse(MetricUnits.NONE);
+        final String unit = metadata.getUnit() == null ? MetricUnits.NONE : metadata.getUnit();
         // for tck, we dont really want to prevent the user to add new units
         // we should likely just check it exists in MetricUnits constant but it is too restrictive
         if (unit.startsWith("jelly")) {
