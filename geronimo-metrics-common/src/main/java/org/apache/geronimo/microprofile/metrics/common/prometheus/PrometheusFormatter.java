@@ -198,7 +198,7 @@ public class PrometheusFormatter {
     private StringBuilder histogram(final String registryKey, final Entry entry, final List<Tag> tagsAsList, final String keyBase, final String keyUnit, final Histogram histogram) {
         final String type = entry.metadata == null ? null : entry.metadata.getType();
         return new StringBuilder()
-                .append(type(registryKey, keyBase + keyUnit + " summary", type))
+                .append(type(registryKey, keyBase + keyUnit, "summary"))
                 .append(value(registryKey, keyBase + keyUnit + "_count", histogram.getCount(), type, entry.metadata, tagsAsList))
                 .append(toPrometheus(registryKey, keyBase, keyUnit, histogram.getSnapshot(), entry.metadata, tagsAsList));
     }
@@ -207,7 +207,7 @@ public class PrometheusFormatter {
         final Duration elapsedTime = timer.getElapsedTime();
         final String type = entry.metadata == null ? null : entry.metadata.getType();
         return new StringBuilder()
-                .append(type(registryKey, keyBase + keyUnit + " summary", type))
+                .append(type(registryKey, keyBase + keyUnit, "summary"))
                 .append(value(registryKey, keyBase + keyUnit + "_count", timer.getCount(), type, entry.metadata, tagsAsList))
                 .append(value(registryKey, keyBase + "_elapsedTime", elapsedTime == null ? 0 : elapsedTime.toNanos(), type, entry.metadata, tagsAsList))
                 .append(meter(registryKey, entry, tagsAsList, timer, keyBase))
@@ -218,7 +218,7 @@ public class PrometheusFormatter {
                                       final String keyBase, final String keyUnit, final SimpleTimer timer) {
         final Duration elapsedTime = timer.getElapsedTime();
         final StringBuilder builder = new StringBuilder()
-                .append(type(registryKey, keyBase + keyUnit + " summary", "simple timer"))
+                .append(type(registryKey, keyBase + keyUnit, "summary"))
                 .append(value(registryKey, keyBase + "_total", timer.getCount(), "counter", entry.metadata, tagsAsList))
                 .append(value(registryKey, keyBase + "_elapsedTime" + keyUnit, elapsedTime == null ? 0 : elapsedTime.toNanos(), "simple timer", entry.metadata, tagsAsList));
         final Duration minTimeDuration = timer.getMinTimeDuration();
