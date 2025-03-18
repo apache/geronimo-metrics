@@ -21,6 +21,9 @@ import static java.util.Optional.ofNullable;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 
+import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -47,7 +50,24 @@ public class SecurityValidator {
             if ("<local>".equals(value)) {
                 return LOCAL_MATCHER;
             }
-            return (Predicate<String>) value::equals;
+            return Optional.ofNullable(value)
+                    .filter(range -> range.startsWith("[") && range.endsWith("]"))
+                    .map(v -> ((Predicate<String>) ipToValidate -> {
+                        return Optional.of(value)
+                                .map(range -> range.subSequence(1, range.length() - 1).toString())
+                                .map(rangeWithoutBraces -> rangeWithoutBraces.split("\\.\\."))
+                                .filter(values -> values.length == 2)
+                                .map(rangeArray -> {
+                                  try {
+                                    BigInteger addressMin = new BigInteger(InetAddress.getByName(rangeArray[0]).getAddress());
+                                    BigInteger addressMax = new BigInteger(InetAddress.getByName(rangeArray[1]).getAddress());
+                                    BigInteger addressToValidate = new BigInteger(InetAddress.getByName(ipToValidate).getAddress());
+                                    return addressMin.max(addressToValidate).equals(addressMax.min(addressToValidate));
+                                  } catch (UnknownHostException e) {
+                                    return false;
+                                  }
+                                }).orElse(false);
+                    })).orElse((Predicate<String>) value::equals);
         }).orElse(singletonList(LOCAL_MATCHER));
         acceptedRoles = config("geronimo.metrics.jaxrs.acceptedRoles", identity()).orElse(null);
     }
